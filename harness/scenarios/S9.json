@@ -1,0 +1,22 @@
+{
+  "id": "S9",
+  "name": "Grant when flag is already ON for everyone",
+  "category": "functional",
+  "mode": "grant",
+  "submode": null,
+  "prompt": "Give Acme early access to new_dashboard until 2027-01-15.",
+  "approval": "none",
+  "seed_overrides": {
+    "flags": {
+      "new_dashboard": { "default_enabled": true, "archived": false }
+    }
+  },
+  "expected": {
+    "flag": "new_dashboard",
+    "env_default": true,
+    "segments_absent": ["ea-new_dashboard-acme"],
+    "no_followup_issue_created": true,
+    "output_contains_any": ["already on", "already enabled", "nothing to grant"],
+    "internal_staff_untouched": true
+  }
+}

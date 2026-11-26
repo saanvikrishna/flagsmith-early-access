@@ -1,0 +1,22 @@
+{
+  "id": "S7",
+  "name": "Grant for non-existent customer",
+  "category": "functional",
+  "mode": "grant",
+  "submode": null,
+  "prompt": "Give nonexistent_corp early access to new_dashboard until 2027-01-15.",
+  "approval": "none",
+  "seed_overrides": {},
+  "expected": {
+    "flag": "new_dashboard",
+    "eval": {
+      "user_1": false,
+      "user_3": false
+    },
+    "env_default": false,
+    "segments_absent": ["ea-new_dashboard-nonexistent_corp"],
+    "no_followup_issue_created": true,
+    "output_contains_any": ["not found", "does not exist", "identifier", "cannot find"],
+    "internal_staff_untouched": true
+  }
+}

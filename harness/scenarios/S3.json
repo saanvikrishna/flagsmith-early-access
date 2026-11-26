@@ -1,0 +1,44 @@
+{
+  "id": "S3",
+  "name": "Revoke Acme's new_dashboard",
+  "category": "functional",
+  "mode": "revoke",
+  "submode": "revoke",
+  "prompt": "Revoke Acme's early access to new_dashboard.",
+  "approval": "approve",
+  "seed_overrides": {
+    "flags": {
+      "new_dashboard": { "default_enabled": false, "archived": false }
+    },
+    "segments": [
+      {
+        "name": "ea-new_dashboard-acme",
+        "description": "early-access; flag=new_dashboard; customer=acme; expires=2027-01-15; issue=#1",
+        "rules": [{ "trait": "org_id", "operator": "EQUAL", "value": "acme" }],
+        "overrides": { "new_dashboard": true }
+      }
+    ],
+    "issues": [
+      {
+        "number": 2,
+        "title": "Revoke early access: new_dashboard for acme (due 2027-01-15)",
+        "body": "Revoke early access for acme on new_dashboard.",
+        "state": "open",
+        "labels": ["early-access"]
+      }
+    ]
+  },
+  "expected": {
+    "flag": "new_dashboard",
+    "eval": {
+      "user_1": false,
+      "user_2": false,
+      "user_3": false
+    },
+    "env_default": false,
+    "segments_present": ["internal_staff"],
+    "segments_absent": ["ea-new_dashboard-acme"],
+    "issues_closed": [2],
+    "internal_staff_untouched": true
+  }
+}

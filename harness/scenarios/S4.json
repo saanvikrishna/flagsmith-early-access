@@ -1,0 +1,45 @@
+{
+  "id": "S4",
+  "name": "Graduate bulk_export after default switched on",
+  "category": "functional",
+  "mode": "graduate",
+  "submode": "graduate",
+  "prompt": "bulk_export is now on for everyone; clean up early access.",
+  "approval": "approve",
+  "seed_overrides": {
+    "flags": {
+      "bulk_export": { "default_enabled": true, "archived": false }
+    },
+    "segments": [
+      {
+        "name": "ea-bulk_export-initech",
+        "description": "early-access; flag=bulk_export; customer=initech; expires=2026-01-01; issue=#3",
+        "rules": [{ "trait": "org_id", "operator": "EQUAL", "value": "initech" }],
+        "overrides": { "bulk_export": true }
+      }
+    ],
+    "issues": [
+      {
+        "number": 3,
+        "title": "Revoke early access: bulk_export for initech (due 2026-01-01)",
+        "body": "Revoke early access for initech on bulk_export.",
+        "state": "open",
+        "labels": ["early-access"]
+      }
+    ]
+  },
+  "expected": {
+    "flag": "bulk_export",
+    "eval": {
+      "user_1": true,
+      "user_3": true,
+      "user_5": true
+    },
+    "env_default": true,
+    "segments_present": ["internal_staff"],
+    "segments_absent": ["ea-bulk_export-initech"],
+    "no_ea_segments_for_flag": "bulk_export",
+    "issues_closed": [3],
+    "internal_staff_untouched": true
+  }
+}
