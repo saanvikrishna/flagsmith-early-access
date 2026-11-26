@@ -1,0 +1,22 @@
+{
+  "id": "S6",
+  "name": "Grant rejected at approval prompt",
+  "category": "functional",
+  "mode": "grant",
+  "submode": null,
+  "prompt": "Handle early access issue #1.",
+  "approval": "reject",
+  "seed_overrides": {},
+  "expected": {
+    "flag": "new_dashboard",
+    "eval": {
+      "user_1": false,
+      "user_3": false
+    },
+    "env_default": false,
+    "segments_present": ["internal_staff"],
+    "segments_absent": ["ea-new_dashboard-acme"],
+    "no_followup_issue_created": true,
+    "internal_staff_untouched": true
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "S2",
+  "name": "Grant ai_summaries to single user user_42",
+  "category": "functional",
+  "mode": "grant",
+  "submode": "grant (user)",
+  "prompt": "Give user_42 early access to ai_summaries in Production until 2027-02-01.",
+  "approval": "approve",
+  "seed_overrides": {
+    "flags": {
+      "ai_summaries": { "default_enabled": false, "archived": false }
+    },
+    "identities": {
+      "user_42": { "org_id": "acme", "plan": "pro" }
+    }
+  },
+  "expected": {
+    "flag": "ai_summaries",
+    "eval": {
+      "user_42": true,
+      "user_1": false,
+      "user_3": false
+    },
+    "env_default": false,
+    "segments_present": ["internal_staff"],
+    "segments_absent": ["ea-ai_summaries-acme"],
+    "identity_overrides_present": ["user_42"],
+    "followup_issue_created": {
+      "title_contains": "Revoke early access: ai_summaries for user_42",
+      "label": "early-access",
+      "due_date": "2027-02-01"
+    },
+    "internal_staff_untouched": true
+  }
+}

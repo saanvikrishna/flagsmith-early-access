@@ -1,0 +1,15 @@
+{
+  "id": "S5",
+  "name": "Audit early access grants",
+  "category": "functional",
+  "mode": "audit",
+  "submode": "audit",
+  "prompt": "Who has early access to what?",
+  "approval": "none",
+  "seed_overrides": {},
+  "expected": {
+    "read_only": true,
+    "output_contains": ["initech", "bulk_export", "overdue"],
+    "internal_staff_untouched": true
+  }
+}

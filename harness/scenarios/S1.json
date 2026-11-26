@@ -1,0 +1,49 @@
+{
+  "id": "S1",
+  "name": "Grant new_dashboard to Acme org from issue #1",
+  "category": "functional",
+  "mode": "grant",
+  "submode": "grant (org)",
+  "prompt": "Handle early access issue #1.",
+  "approval": "approve",
+  "seed_overrides": {
+    "flags": {
+      "new_dashboard": { "default_enabled": false, "archived": false },
+      "ai_summaries": { "default_enabled": false, "archived": false },
+      "bulk_export": { "default_enabled": false, "archived": false }
+    },
+    "issues": [
+      {
+        "number": 1,
+        "title": "Early access request: Acme -> new_dashboard until 2027-01-15",
+        "body": "Customer: Acme (org_id=acme)\nFeature: new_dashboard\nEnvironment: Production\nEnd date: 2027-01-15\nRequester: @alice",
+        "state": "open",
+        "labels": ["early-access"]
+      }
+    ]
+  },
+  "expected": {
+    "flag": "new_dashboard",
+    "eval": {
+      "user_1": true,
+      "user_2": true,
+      "user_3": false,
+      "user_4": false,
+      "user_5": false
+    },
+    "env_default": false,
+    "segments_present": ["ea-new_dashboard-acme", "internal_staff"],
+    "segments_absent": [],
+    "segment_marker": {
+      "name": "ea-new_dashboard-acme",
+      "contains": ["early-access", "flag=new_dashboard", "customer=acme", "expires=2027-01-15"]
+    },
+    "issue_commented": 1,
+    "followup_issue_created": {
+      "title_contains": "Revoke early access: new_dashboard for acme",
+      "label": "early-access",
+      "due_date": "2027-01-15"
+    },
+    "internal_staff_untouched": true
+  }
+}

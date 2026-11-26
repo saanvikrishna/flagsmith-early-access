@@ -1,0 +1,24 @@
+{
+  "id": "S10",
+  "name": "Ambiguous identity with two candidate traits in code",
+  "category": "functional",
+  "mode": "grant",
+  "submode": null,
+  "prompt": "Give Acme early access to new_dashboard until 2027-01-15.",
+  "approval": "none",
+  "seed_overrides": {
+    "ambiguous_traits": ["org_id", "company_id"]
+  },
+  "expected": {
+    "flag": "new_dashboard",
+    "eval": {
+      "user_1": false,
+      "user_3": false
+    },
+    "env_default": false,
+    "segments_absent": ["ea-new_dashboard-acme"],
+    "no_followup_issue_created": true,
+    "clarifying_questions": 1,
+    "internal_staff_untouched": true
+  }
+}
