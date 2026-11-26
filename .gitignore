@@ -1,0 +1,24 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+flagsmith.json
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Test & runtime artifacts
+*.log
+/tmp/
+harness/.runs/
+EARLY_ACCESS_SKILL_SPEC.md
