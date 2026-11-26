@@ -1,0 +1,13 @@
+{
+  "defaults": {
+    "new_dashboard": false,
+    "ai_summaries": false,
+    "bulk_export": false
+  },
+  "orgOverrides": {
+    "initech": {
+      "bulk_export": true
+    }
+  },
+  "identityOverrides": {}
+}

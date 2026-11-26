@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Projects Dashboard — B2B Early Access Demo</title>
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --surface: #121826;
+      --surface-2: #192234;
+      --border: #263248;
+      --text: #e6edf7;
+      --muted: #93a4bf;
+      --accent: #6366f1;
+      --accent-soft: rgba(99, 102, 241, 0.16);
+      --on-bg: rgba(16, 185, 129, 0.15);
+      --on-text: #34d399;
+      --on-border: rgba(52, 211, 153, 0.35);
+      --off-bg: rgba(148, 163, 184, 0.12);
+      --off-text: #94a3b8;
+      --off-border: rgba(148, 163, 184, 0.25);
+      --warn: #f59e0b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 28px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo {
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, #6366f1, #22d3ee);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 15px;
+      color: #fff;
+    }
+
+    .brand h1 {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .brand p {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .switcher-label {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
+
+    select, button {
+      font: inherit;
+      color: var(--text);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    select:focus, button:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      font-weight: 500;
+    }
+
+    button.primary:hover {
+      filter: brightness(1.08);
+    }
+
+    button.secondary:hover {
+      border-color: #3b4d6e;
+    }
+
+    .mode-pill {
+      font-size: 12px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--muted);
+    }
+
+    .mode-pill.live {
+      color: var(--on-text);
+      border-color: var(--on-border);
+      background: var(--on-bg);
+    }
+
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 28px 24px 48px;
+      display: grid;
+      gap: 24px;
+    }
+
+    .identity-banner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+    }
+
+    .identity-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .chip {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: #cbd5e1;
+    }
+
+    .chip.org {
+      background: var(--accent-soft);
+      border-color: rgba(99, 102, 241, 0.35);
+      color: #c7d2fe;
+    }
+
+    .flags-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    .flag-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: border-color 0.15s ease;
+    }
+
+    .flag-card.is-on {
+      border-color: var(--on-border);
+    }
+
+    .flag-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .flag-name {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 3px 9px;
+      border-radius: 999px;
+      text-transform: uppercase;
+    }
+
+    .badge.on {
+      background: var(--on-bg);
+      color: var(--on-text);
+      border: 1px solid var(--on-border);
+    }
+
+    .badge.off {
+      background: var(--off-bg);
+      color: var(--off-text);
+      border: 1px solid var(--off-border);
+    }
+
+    .flag-desc {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-header h2 {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .panel-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .new-dashboard-banner {
+      display: none;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      padding: 18px 20px;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.14), rgba(34, 211, 238, 0.08));
+      border-bottom: 1px solid var(--border);
+    }
+
+    .new-dashboard-banner.visible {
+      display: grid;
+    }
+
+    .metric-box {
+      background: rgba(11, 15, 23, 0.55);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+
+    .metric-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .metric-value {
+      font-size: 22px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      font-size: 11.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      font-weight: 600;
+      background: rgba(25, 34, 52, 0.45);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .status-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+    }
+
+    .ai-summary-text {
+      color: #a5f3fc;
+      font-size: 13px;
+    }
+
+    .locked-text {
+      color: var(--muted);
+      font-style: italic;
+      font-size: 12.5px;
+    }
+
+    .toast {
+      font-size: 12.5px;
+      color: var(--on-text);
+      display: none;
+    }
+
+    .toast.visible {
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">P</div>
+      <div>
+        <h1>Projects Dashboard</h1>
+        <p>B2B Workspace &amp; Early Access Control</p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <span class="switcher-label">User Switcher</span>
+      <select id="userSelect" aria-label="Select user">
+        <optgroup label="Acme Corp (enterprise)">
+          <option value="1">Alice — user_1 (acme / enterprise)</option>
+          <option value="2">Bob — user_2 (acme / enterprise)</option>
+        </optgroup>
+        <optgroup label="Globex Inc (pro)">
+          <option value="3">Carol — user_3 (globex / pro)</option>
+          <option value="4">Dave — user_4 (globex / pro)</option>
+        </optgroup>
+        <optgroup label="Initech (starter)">
+          <option value="5">Eve — user_5 (initech / starter)</option>
+          <option value="42">Frank — user_42 (initech / starter)</option>
+        </optgroup>
+      </select>
+      <button id="refreshBtn" class="secondary" type="button">Refresh Flags</button>
+      <span id="modePill" class="mode-pill">Mode: loading…</span>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="identity-banner">
+      <div>
+        <strong id="activeUserName">Loading…</strong>
+        <span id="activeUserRole" style="color: var(--muted); font-size: 13px; margin-left: 8px;"></span>
+      </div>
+      <div class="identity-meta">
+        <span class="chip" id="chipIdentifier">identifier: —</span>
+        <span class="chip org" id="chipOrg">org_id: —</span>
+        <span class="chip" id="chipPlan">plan: —</span>
+      </div>
+    </section>
+
+    <section class="flags-grid" id="flagsGrid"></section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Active Organization Projects</h2>
+        <div class="panel-actions">
+          <span id="exportToast" class="toast">Exported 4 projects to CSV</span>
+          <button id="bulkExportBtn" class="primary" type="button" style="display: none;">
+            Bulk Export CSV
+          </button>
+          <span id="bulkExportLocked" class="locked-text">
+            Bulk export disabled (bulk_export = OFF)
+          </span>
+        </div>
+      </div>
+
+      <div id="newDashboardBanner" class="new-dashboard-banner">
+        <div class="metric-box">
+          <div class="metric-label">Velocity (New Dashboard)</div>
+          <div class="metric-value">94.2%</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">Active Sprints</div>
+          <div class="metric-value">6</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">SLA Health</div>
+          <div class="metric-value" style="color: var(--on-text);">99.95%</div>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Status</th>
+            <th>Owner</th>
+            <th id="aiColHeader">AI Summary (ai_summaries)</th>
+          </tr>
+        </thead>
+        <tbody id="projectsBody"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    const FLAG_DESCRIPTIONS = {
+      new_dashboard: 'Next-gen executive metrics banner and sprint velocity widgets.',
+      ai_summaries: 'Automated AI status summaries for every active project.',
+      bulk_export: 'One-click bulk CSV export across all organization projects.',
+    };
+
+    const SAMPLE_PROJECTS = [
+      {
+        name: 'Q4 Platform Migration',
+        status: 'In Progress',
+        owner: 'Platform Team',
+        summary: 'On track — 82% of services migrated with zero downtime.',
+      },
+      {
+        name: 'SOC2 Type II Readiness',
+        status: 'Review',
+        owner: 'Security Ops',
+        summary: 'All 14 controls verified; awaiting final auditor sign-off.',
+      },
+      {
+        name: 'Customer Billing v3',
+        status: 'In Progress',
+        owner: 'Revenue Eng',
+        summary: 'Usage metering pipeline passing integration tests.',
+      },
+      {
+        name: 'Mobile Offline Sync',
+        status: 'Planned',
+        owner: 'Client Core',
+        summary: 'Architecture RFC approved; kickoff scheduled Monday.',
+      },
+    ];
+
+    const userSelect = document.getElementById('userSelect');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const modePill = document.getElementById('modePill');
+    const activeUserName = document.getElementById('activeUserName');
+    const activeUserRole = document.getElementById('activeUserRole');
+    const chipIdentifier = document.getElementById('chipIdentifier');
+    const chipOrg = document.getElementById('chipOrg');
+    const chipPlan = document.getElementById('chipPlan');
+    const flagsGrid = document.getElementById('flagsGrid');
+    const newDashboardBanner = document.getElementById('newDashboardBanner');
+    const bulkExportBtn = document.getElementById('bulkExportBtn');
+    const bulkExportLocked = document.getElementById('bulkExportLocked');
+    const exportToast = document.getElementById('exportToast');
+    const projectsBody = document.getElementById('projectsBody');
+
+    function renderFlags(flags) {
+      flagsGrid.innerHTML = '';
+      for (const [name, state] of Object.entries(flags)) {
+        const isOn = Boolean(state?.enabled);
+        const card = document.createElement('div');
+        card.className = `flag-card ${isOn ? 'is-on' : ''}`;
+        card.innerHTML = `
+          <div class="flag-header">
+            <span class="flag-name">${name}</span>
+            <span class="badge ${isOn ? 'on' : 'off'}">${isOn ? 'ON' : 'OFF'}</span>
+          </div>
+          <p class="flag-desc">${FLAG_DESCRIPTIONS[name] || ''}</p>
+        `;
+        flagsGrid.appendChild(card);
+      }
+
+      const newDashOn = Boolean(flags.new_dashboard?.enabled);
+      newDashboardBanner.classList.toggle('visible', newDashOn);
+
+      const bulkOn = Boolean(flags.bulk_export?.enabled);
+      bulkExportBtn.style.display = bulkOn ? 'inline-block' : 'none';
+      bulkExportLocked.style.display = bulkOn ? 'none' : 'inline-block';
+
+      const aiOn = Boolean(flags.ai_summaries?.enabled);
+      projectsBody.innerHTML = '';
+      for (const project of SAMPLE_PROJECTS) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong>${project.name}</strong></td>
+          <td><span class="status-pill">${project.status}</span></td>
+          <td>${project.owner}</td>
+          <td>${
+            aiOn
+              ? `<span class="ai-summary-text">${project.summary}</span>`
+              : `<span class="locked-text">Upgrade or request early access (ai_summaries = OFF)</span>`
+          }</td>
+        `;
+        projectsBody.appendChild(tr);
+      }
+    }
+
+    async function loadUserFlags(userId) {
+      exportToast.classList.remove('visible');
+      const res = await fetch(`/api/flags?user=${encodeURIComponent(userId)}`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      const { user, mode, flags } = data;
+
+      activeUserName.textContent = `${user.name} (${user.orgName})`;
+      activeUserRole.textContent = user.role;
+      chipIdentifier.textContent = `identifier: ${user.identifier}`;
+      chipOrg.textContent = `org_id: ${user.org_id}`;
+      chipPlan.textContent = `plan: ${user.plan}`;
+
+      modePill.textContent = `Mode: ${mode}`;
+      modePill.classList.toggle('live', mode === 'live');
+
+      renderFlags(flags);
+    }
+
+    userSelect.addEventListener('change', () => {
+      loadUserFlags(userSelect.value).catch(console.error);
+    });
+
+    refreshBtn.addEventListener('click', () => {
+      loadUserFlags(userSelect.value).catch(console.error);
+    });
+
+    bulkExportBtn.addEventListener('click', () => {
+      exportToast.classList.add('visible');
+      setTimeout(() => exportToast.classList.remove('visible'), 2500);
+    });
+
+    loadUserFlags(userSelect.value).catch(console.error);
+  </script>
+</body>
+</html>

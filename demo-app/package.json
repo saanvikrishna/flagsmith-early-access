@@ -1,0 +1,17 @@
+{
+  "name": "early-access-demo-app",
+  "version": "1.0.0",
+  "description": "B2B Projects Dashboard demo app for Flagsmith early-access management",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
