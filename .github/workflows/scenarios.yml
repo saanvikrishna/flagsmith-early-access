@@ -1,0 +1,41 @@
+name: Live Scenario Harness
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "Number of runs per scenario"
+        required: false
+        default: "3"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  run-scenarios:
+    name: Run Live Scenarios
+    runs-on: ubuntu-latest
+    if: ${{ secrets.FLAGSMITH_API_KEY != '' && secrets.ANTHROPIC_API_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Flagsmith CLI v2 and jq
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          npm install -g @flagsmith/cli
+      - name: Run scenario harness
+        env:
+          FLAGSMITH_API_KEY: ${{ secrets.FLAGSMITH_API_KEY }}
+          FLAGSMITH_ORGANISATION: ${{ secrets.FLAGSMITH_ORGANISATION }}
+          FLAGSMITH_PROJECT: ${{ secrets.FLAGSMITH_PROJECT }}
+          FLAGSMITH_ENVIRONMENT: ${{ secrets.FLAGSMITH_ENVIRONMENT }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 harness/run.py --runs "${{ github.event.inputs.runs }}" --mode live

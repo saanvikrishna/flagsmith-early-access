@@ -1,0 +1,38 @@
+﻿flagsmith version v2.0.0
+The Flagsmith command-line interface
+
+Usage:
+  flagsmith [command] [flags]
+
+Available Commands:
+  api          Call the Flagsmith API with the CLI's credentials
+  auth         Inspect and manage authentication
+  completion   Generate the autocompletion script for the specified shell
+  config       Show the resolved context and where each value comes from
+  environment  Manage environments in the current project
+  evaluate     Show the flags an SDK resolves for the current environment
+  feature      Manage features in the current project
+  flag         Inspect feature flags in the current environment
+  help         Help about any command
+  init         Bind this directory to a Flagsmith project (writes flagsmith.json)
+  login        Log in to Flagsmith in your browser
+  logout       Log out of an instance and revoke the stored session
+  organisation Manage organisations
+  project      Manage projects
+  segment      Manage segments in the current project
+
+Flags:
+      --api-url string        Flagsmith API base URL (env: FLAGSMITH_API_URL) (default "https://api.flagsmith.com")
+  -c, --config-path string    path to flagsmith.json (env: FLAGSMITH_CONFIG_PATH)
+  -e, --environment string    environment as its client-side SDK key (env: FLAGSMITH_ENVIRONMENT)
+  -h, --help                  help for flagsmith
+      --jq string             filter JSON output through a jq expression (implies --json)
+      --json                  output JSON instead of human-readable text (env: FLAGSMITH_JSON_OUTPUT)
+      --no-input              never prompt or open a browser; fail if required input is missing (env: FLAGSMITH_NO_INPUT)
+      --organisation string   organisation ID or name (env: FLAGSMITH_ORGANISATION)
+  -p, --project string        project ID or name (env: FLAGSMITH_PROJECT)
+      --sdk-api-url string    SDK API base URL for flag evaluation (env: FLAGSMITH_SDK_API_URL)
+  -v, --version               version for flagsmith
+      --yes                   answer confirmations affirmatively
+
+Use "flagsmith [command] --help" for more information about a command.

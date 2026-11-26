@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  skill-and-docs-lint:
+    name: Skill & Docs Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate SKILL.md frontmatter and word count
+        run: |
+          python3 - <<'EOF'
+          import os, re, sys
+          skill_path = "skill/flagsmith-early-access/SKILL.md"
+          if not os.path.exists(skill_path):
+              print("SKILL.md not added yet; skipping.")
+              sys.exit(0)
+          text = open(skill_path, encoding="utf-8").read()
+          m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+          assert m, "SKILL.md missing YAML frontmatter"
+          fm = m.group(1)
+          assert re.search(r"^name:\s*flagsmith-early-access\s*$", fm, re.M), "Missing or invalid name in frontmatter"
+          assert re.search(r"^description:\s*.+$", fm, re.M), "Missing description in frontmatter"
+          words = len(text.split())
+          print(f"SKILL.md word count: {words}")
+          assert words <= 2000, f"SKILL.md exceeds 2000 words ({words})"
+          EOF
+
+  scripts-and-harness-tests:
+    name: Scripts, Seed & Harness Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install jq and shellcheck
+        run: sudo apt-get update && sudo apt-get install -y jq shellcheck
+      - name: Lint shell scripts
+        run: |
+          shopt -s nullglob
+          scripts=(skill/flagsmith-early-access/scripts/*.sh)
+          if [ ${#scripts[@]} -gt 0 ]; then
+            shellcheck "${scripts[@]}"
+          else
+            echo "No shell scripts yet; skipping."
+          fi
+      - name: Run Python unit & mock tests
+        run: |
+          if [ -n "$(find . -name 'test_*.py' -not -path '*/node_modules/*' -print -quit)" ]; then
+            python3 -m unittest discover -s . -p "test_*.py" -v
+          else
+            echo "No Python test files yet; skipping."
+          fi
+
+  demo-app-tests:
+    name: Demo App Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          python-version: "3.12"
+          node-version: "20"
+      - name: Install and test demo-app
+        run: |
+          if [ -f demo-app/package.json ]; then
+            cd demo-app && npm ci && npm test
+          else
+            echo "demo-app not added yet; skipping."
+          fi
