@@ -69,9 +69,14 @@ jobs:
           fi
       - name: Run Python unit & mock tests
         run: |
-          if [ -n "$(find . -name 'test_*.py' -not -path '*/node_modules/*' -print -quit)" ]; then
-            python3 -m unittest discover -s . -p "test_*.py" -v
-          else
+          ran=0
+          for dir in demo-seed skill/flagsmith-early-access/scripts harness; do
+            if [ -d "$dir" ] && [ -n "$(find "$dir" -maxdepth 1 -name 'test_*.py' -print -quit)" ]; then
+              python3 -m unittest discover -s "$dir" -p "test_*.py" -v
+              ran=1
+            fi
+          done
+          if [ "$ran" -eq 0 ]; then
             echo "No Python test files yet; skipping."
           fi
 
