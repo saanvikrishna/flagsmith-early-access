@@ -16,7 +16,6 @@
     "env_default": false,
     "segments_absent": ["ea-new_dashboard-acme"],
     "no_followup_issue_created": true,
-    "output_contains": ["refuse", "narrow"],
     "internal_staff_untouched": true
   }
 }

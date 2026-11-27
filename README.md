@@ -138,22 +138,24 @@ All **45/45** mock harness checks pass across 10 lifecycle scenarios (**S1–S10
 
 | Suite | Scope | Result | Details |
 |---|---|---|---|
-| **Scenarios (S1–S10)** | Org/user grant, revoke, graduate, audit, pre-flight stops, error handling | **30/30 PASS** (3 runs each) | [results/scenarios.md](results/scenarios.md) |
-| **Safety Tests (X1–X5)** | Prompt injection, environment-wide refusal, rollback on control drift, rejection at approval, secret redaction | **15/15 PASS** (3 runs each) | [results/scenarios.md](results/scenarios.md) |
+| **Live Flagsmith Cloud Runs** | End-to-end `S1` (grant org), `S2` (grant user), `S3` (revoke), `S4` (graduate), `S5` (audit), `X2` (safety refusal) | **6/6 PASS** | [results/demo-run.md](results/demo-run.md) |
+| **Scenarios (S1–S10, Mock)** | Org/user grant, revoke, graduate, audit, pre-flight stops, error handling | **30/30 PASS** (3 runs each) | [results/scenarios.md](results/scenarios.md) |
+| **Safety Tests (X1–X5, Mock)** | Prompt injection, environment-wide refusal, rollback on control drift, rejection at approval, secret redaction | **15/15 PASS** (3 runs each) | [results/scenarios.md](results/scenarios.md) |
+| **Unit & Integration Suites** | `demo-app` (12), `demo-seed` (7), `scripts` (6), `harness` (10), `self-hosted` (3), `tui` (10), `vscode-extension` (7) | **55/55 PASS** | `.github/workflows/ci.yml` |
 
-### Token Efficiency (Median Tokens per Mode, Mock Harness)
+### Live Token Counts (Flagsmith Cloud + `claude-opus-5-5`)
 
-| Mode | Skill Total (In + Out) | Baseline Total (In + Out) | Reduction |
-|---|---:|---:|---:|
-| `grant` (org) | 2,430 (1,950 + 480) | 5,350 (4,200 + 1,150) | **~55% fewer tokens** |
-| `grant` (user) | 2,260 (1,820 + 440) | 4,500 (3,600 + 900) | **~50% fewer tokens** |
-| `revoke` | 2,040 (1,650 + 390) | 4,500 (3,600 + 900) | **~55% fewer tokens** |
-| `graduate` | 1,970 (1,600 + 370) | 4,500 (3,600 + 900) | **~56% fewer tokens** |
-| `audit` | 1,360 (1,100 + 260) | 4,500 (3,600 + 900) | **~70% fewer tokens** |
+| Mode | Scenario | Turns | Input Tokens (incl. cache) | Output Tokens | Total Tokens |
+|---|---|---:|---:|---:|---:|
+| `grant (org)` | S1 (skill, median of 2) | 14.5 | 605,541 | 5,215 | **610,756** |
+| `grant (org)` | S1 (no-skill baseline) | — | 610,759 | 3,550 | **614,309** |
+| `grant (user)` | S2 (skill) | 12 | 477,132 | 3,776 | **480,908** |
+| `revoke` | S3 (skill) | 11 | 417,701 | 3,061 | **420,762** |
+| `graduate` | S4 (skill) | 14 | 547,411 | 4,109 | **551,520** |
+| `audit` | S5 (skill) | 7 | 234,687 | 1,899 | **236,586** |
+| `safety (refusal)` | X2 (skill) | 6 | 191,961 | 1,648 | **193,609** |
 
 Full breakdown in [results/tokens.md](results/tokens.md).
-
-> **Note on Live Runs:** All local CLI `--help` checks (`flagsmith v2.0.0`, `gh 2.96.0`), unit tests, and 45/45 mock harness checks are passing. Live Flagsmith Cloud end-to-end runs and live `claude -p` token measurements are currently pending human-only checkpoints **H1**, **H2**, and **H3** in [docs/BLOCKERS.md](docs/BLOCKERS.md).
 
 ---
 
@@ -208,7 +210,7 @@ flagsmith segment list --json --jq '[.[] | select(.name | startswith("ea-")) | {
 - Tested against **Flagsmith CLI `v2.0.0`**; older v1 CLI syntax is not supported.
 - Scoped to a **single Flagsmith project** per invocation (non-default environments/projects require `-e` or `-p`).
 - Relies on consistent identity/trait naming conventions in the target codebase (`user_<id>`, `org_id` / `company_id` / `tenant_id`).
-- Live Flagsmith Cloud verification and live token benchmarking await **H1–H3** credentials ([docs/BLOCKERS.md](docs/BLOCKERS.md)).
+- Demo video recording (**H5/H6**) and final hackathon form submission (**H7**) remain human-only checkpoints ([docs/BLOCKERS.md](docs/BLOCKERS.md)).
 
 ---
 

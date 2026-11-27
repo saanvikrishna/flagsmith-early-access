@@ -421,6 +421,67 @@ def _run_live_once(
             check=True,
         )
 
+    gh_bin = shutil.which("gh") or "gh"
+    init_issues_proc = subprocess.run(
+        [gh_bin, "issue", "list", "--state", "all", "--json", "number", "--limit", "100"],
+        cwd=_REPO_ROOT, capture_output=True, text=True, check=False,
+    )
+    initial_issue_count = 0
+    if init_issues_proc.returncode == 0 and init_issues_proc.stdout.strip():
+        try:
+            initial_issue_count = max((int(i["number"]) for i in json.loads(init_issues_proc.stdout)), default=0)
+        except (ValueError, KeyError, TypeError):
+            pass
+
+    flagsmith_bin = shutil.which("flagsmith") or "flagsmith"
+    if scenario["id"] == "S3":
+        rules_json = json.dumps({
+            "type": "ALL",
+            "rules": [{"type": "ANY", "conditions": [{"property": "org_id", "operator": "EQUAL", "value": "acme"}]}],
+        })
+        subprocess.run(
+            [
+                flagsmith_bin, "segment", "create", "ea-new_dashboard-acme",
+                "--rules", rules_json,
+                "--description", "early-access; flag=new_dashboard; customer=acme; expires=2027-01-15; issue=#1",
+                "--no-input",
+            ],
+            cwd=_REPO_ROOT, check=False, capture_output=True, text=True,
+        )
+        subprocess.run(
+            [flagsmith_bin, "flag", "update", "new_dashboard", "--enable", "--segment", "ea-new_dashboard-acme", "--yes", "--no-input"],
+            cwd=_REPO_ROOT, check=False, capture_output=True, text=True,
+        )
+        c_proc = subprocess.run(
+            [gh_bin, "issue", "create", "--title", "Revoke early access: new_dashboard for acme (due 2027-01-15)", "--label", "early-access", "--body", "Revoke early access for acme on new_dashboard."],
+            cwd=_REPO_ROOT, capture_output=True, text=True, check=False,
+        )
+        if c_proc.returncode == 0 and "/" in c_proc.stdout:
+            try:
+                num = int(c_proc.stdout.strip().rstrip("/").split("/")[-1])
+                scenario = copy.deepcopy(scenario)
+                scenario["expected"]["issues_closed"] = [num]
+                initial_issue_count = max(initial_issue_count, num)
+            except ValueError:
+                pass
+    elif scenario["id"] == "S4":
+        subprocess.run(
+            [flagsmith_bin, "flag", "update", "bulk_export", "--enable", "--yes", "--no-input"],
+            cwd=_REPO_ROOT, check=False, capture_output=True, text=True,
+        )
+        c_proc = subprocess.run(
+            [gh_bin, "issue", "create", "--title", "Revoke early access: bulk_export for initech (due 2026-11-25)", "--label", "early-access", "--body", "Revoke early access for initech on bulk_export."],
+            cwd=_REPO_ROOT, capture_output=True, text=True, check=False,
+        )
+        if c_proc.returncode == 0 and "/" in c_proc.stdout:
+            try:
+                num = int(c_proc.stdout.strip().rstrip("/").split("/")[-1])
+                scenario = copy.deepcopy(scenario)
+                scenario["expected"]["issues_closed"] = [num]
+                initial_issue_count = max(initial_issue_count, num)
+            except ValueError:
+                pass
+
     demo_app = _REPO_ROOT / "demo-app"
     with tempfile.TemporaryDirectory(prefix="ea-harness-") as tmpdir:
         work_dir = Path(tmpdir) / "demo-app"
@@ -436,6 +497,18 @@ def _run_live_once(
                     skill_dst = work_dir / skill_root / "skills" / "flagsmith-early-access"
                     skill_dst.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copytree(skill_src, skill_dst)
+
+        # Initialize lightweight git remote in temp work_dir so `gh` works like a real repo
+        origin_proc = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if origin_proc.returncode == 0 and origin_proc.stdout.strip():
+            subprocess.run(["git", "init", "-q"], cwd=work_dir, check=False)
+            subprocess.run(["git", "remote", "add", "origin", origin_proc.stdout.strip()], cwd=work_dir, check=False)
 
         approval = scenario.get("approval", "none")
         prompt = scenario["prompt"]
@@ -537,7 +610,11 @@ def _run_live_once(
             turns = int(payload.get("num_turns", 0))
             output_text = str(payload.get("result", proc.stdout))
 
-        reader = LiveStateReader(agent_output=output_text, cwd=str(_REPO_ROOT))
+        reader = LiveStateReader(
+            agent_output=output_text,
+            initial_issue_count=initial_issue_count,
+            cwd=str(_REPO_ROOT),
+        )
         result = verify_scenario(scenario, mode="live", reader=reader)
         notes = "; ".join(result.failures) if result.failures else "All checks passed"
         return result, turns, in_tok, out_tok, notes
