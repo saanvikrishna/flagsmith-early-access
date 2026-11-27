@@ -63,8 +63,8 @@ If unauthenticated or missing project/environment, stop and report what is missi
    - Control MUST match its pre-change state (unchanged / `false`).
    - If either check fails: immediately roll back using the snapshot (`flagsmith flag delete` / `flagsmith segment delete`), re-verify both target and control, and report the failure.
 10. **Leave a trail** (templates in [references/trail-templates.md](references/trail-templates.md)):
-    - Comment on the source GitHub issue with what changed, verification result, expiry, and exact revoke command (or print if no issue).
-    - Create a follow-up issue titled `Revoke early access: <feature> for <customer> (due <date>)` with label `early-access` containing the exact revoke instruction.
+    - If triggered from a GitHub issue, comment on it with what changed, verification result, expiry, and exact revoke command.
+    - **ALWAYS** run `gh issue create --title "Revoke early access: <feature> for <customer> (due <YYYY-MM-DD>)" --label early-access --body "..."` even when granted from chat or outside a git repo (use `-R "$GH_REPO"` if `GH_REPO` is set). Never skip creating the follow-up issue.
     - Ensure the Flagsmith segment description (for org grants) or follow-up issue (for user grants) records `flag`, `customer`, `expires`, and `issue`.
 11. **Report**: End with a 3-line summary (target & change, verification `TARGET=true CONTROL=false`, follow-up issue/trail).
 

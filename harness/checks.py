@@ -196,10 +196,22 @@ class LiveStateReader(StateReader):
         return data if isinstance(data, list) else data.get("results", [])
 
     def get_identity_overrides(self, flag: str) -> list[str]:
-        # Query feature states / identity overrides via Flagsmith CLI
         data = self._run_json(["flagsmith", "flag", "get", flag, "--json"])
-        overrides = data.get("identity_overrides", []) if isinstance(data, dict) else []
-        return [str(o.get("identity") or o.get("identifier")) for o in overrides]
+        if isinstance(data, dict):
+            raw = data.get("identity_overrides", 0)
+            if isinstance(raw, list):
+                return [str(o.get("identity") or o.get("identifier")) for o in raw]
+            if isinstance(raw, int) and raw == 0:
+                return []
+        found: list[str] = []
+        for ident in ("user_1", "user_2", "user_3", "user_4", "user_5", "user_42"):
+            try:
+                ov = self._run_json(["flagsmith", "flag", "get", flag, "--identifier", ident, "--json"])
+                if isinstance(ov, dict) and ov.get("identifier") == ident:
+                    found.append(ident)
+            except RuntimeError:
+                continue
+        return found
 
     def list_issues(self, state: str = "all") -> list[dict[str, Any]]:
         data = self._run_json(
@@ -408,11 +420,11 @@ def verify_scenario(
 
     for num in expected.get("issues_closed", []):
         iss = reader.get_issue(int(num))
-        record(bool(iss and iss.get("state") == "closed"), f"issue #{num} is closed")
+        record(bool(iss and str(iss.get("state", "")).lower() == "closed"), f"issue #{num} is closed")
 
     for num in expected.get("issues_open", []):
         iss = reader.get_issue(int(num))
-        record(bool(iss and iss.get("state") == "open"), f"issue #{num} remains open")
+        record(bool(iss and str(iss.get("state", "")).lower() == "open"), f"issue #{num} remains open")
 
     # 9. Agent output assertions
     output = reader.get_output()
