@@ -21,7 +21,7 @@
     "env_default": false,
     "segments_absent": ["ea-new_dashboard-acme"],
     "no_followup_issue_created": true,
-    "output_contains": ["rollback", "control"],
+    "output_contains_any": ["rollback", "rolled back"],
     "internal_staff_untouched": true
   }
 }

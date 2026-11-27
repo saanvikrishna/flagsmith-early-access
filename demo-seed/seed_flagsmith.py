@@ -339,11 +339,26 @@ def seed_live(cli: FlagsmithCLI) -> None:
                         method="DELETE",
                     )
                 elif fs.get("feature_segment") is None and fs.get("enabled") is not False:
-                    cli.api(
-                        f"api/v1/environments/{env_key}/featurestates/{fs['id']}/",
-                        method="PATCH",
-                        payload={"enabled": False},
+                    resolved_bin = shutil.which("flagsmith") or "flagsmith"
+                    env = os.environ.copy()
+                    if cli.config.api_key:
+                        env["FLAGSMITH_API_KEY"] = cli.config.api_key
+                    env["FLAGSMITH_ENVIRONMENT"] = env_key
+                    if cli.config.organisation:
+                        env["FLAGSMITH_ORGANISATION"] = cli.config.organisation
+                    proc = cli.runner(
+                        [resolved_bin, "flag", "update", feat_name, "--disable", "--yes", "--no-input"],
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                        env=env,
                     )
+                    if proc.returncode != 0:
+                        cli.api(
+                            f"api/v1/environments/{env_key}/featurestates/{fs['id']}/",
+                            method="PATCH",
+                            payload={"enabled": False},
+                        )
 
         # Upsert identities and traits via Flagsmith CLI evaluate --persist
         resolved_bin = shutil.which("flagsmith") or "flagsmith"
