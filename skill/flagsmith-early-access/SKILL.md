@@ -53,12 +53,12 @@ If unauthenticated or missing project/environment, stop and report what is missi
 6. **Snapshot**: Run `scripts/snapshot.sh <flag> <target>` (or save `flagsmith flag get` / `segment get` output to a temp file) so rollback is exact.
 7. **Show the 6-line approval plan and wait**: Present the exact plan template below and wait for `yes`. If the user says `no` (or rejects), make zero changes (optionally note "not applied" if requested) and stop.
 8. **Apply**:
-   - **Single user**: `flagsmith flag update <flag> --enable --identifier <id> --no-input --json --jq '{enabled}'`
+   - **Single user**: `flagsmith flag update <flag> --enable --identifier <id> --yes --no-input --json --jq '{enabled}'`
    - **Org segment**:
      1. `flagsmith segment create ea-<flag>-<customer> --rules '<rules_json>' --description "early-access; flag=<flag>; customer=<customer>; expires=<YYYY-MM-DD>; issue=<url>" --no-input --json --jq '{id,name}'`
-     2. `flagsmith flag update <flag> --enable --segment ea-<flag>-<customer> --no-input --json --jq '{enabled}'`
+     2. `flagsmith flag update <flag> --enable --segment ea-<flag>-<customer> --yes --no-input --json --jq '{enabled}'`
    - If a CLI error occurs midway, stop immediately, report what was applied, and print/run the exact rollback from the snapshot.
-9. **Verify with negative control**: Run `scripts/verify.sh <flag> <target_id> <control_id>` (or `flagsmith evaluate <flag> --identity <id> [--trait <k>=<v>] --json --jq '{enabled,value}'` for both).
+9. **Verify with negative control**: Run `scripts/verify.sh <flag> <target_id> <control_id>` (or `flagsmith evaluate <flag> --identity <id> [--trait <k>=<v>] --jq '{enabled,value,reason}'` for both).
    - Target MUST be `enabled: true`.
    - Control MUST match its pre-change state (unchanged / `false`).
    - If either check fails: immediately roll back using the snapshot (`flagsmith flag delete` / `flagsmith segment delete`), re-verify both target and control, and report the failure.

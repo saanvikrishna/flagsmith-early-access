@@ -410,13 +410,13 @@ def _parse_codex_jsonl(stdout: str) -> tuple[int, int, int, str]:
 def _run_live_once(
     scenario: dict[str, Any],
     baseline: bool = False,
-    agent: str = "codex",
+    agent: str = "claude",
 ) -> tuple[CheckResult, int, int, int, str]:
-    """Execute one live run against demo-seed, demo-app copy, and Codex or Claude CLI."""
+    """Execute one live run against demo-seed, demo-app copy, and Claude or Codex CLI."""
     seed_script = _REPO_ROOT / "demo-seed" / "seed_flagsmith.py"
     if seed_script.exists():
         subprocess.run(
-            [sys.executable, str(seed_script)],
+            [sys.executable, str(seed_script), "--mode", "live"],
             cwd=_REPO_ROOT,
             check=True,
         )
@@ -439,14 +439,43 @@ def _run_live_once(
 
         approval = scenario.get("approval", "none")
         prompt = scenario["prompt"]
+        if scenario["id"] == "S1":
+            issue_lookup = subprocess.run(
+                [
+                    shutil.which("gh") or "gh",
+                    "issue",
+                    "list",
+                    "--state",
+                    "open",
+                    "--search",
+                    "Early access request: Acme -> new_dashboard",
+                    "--json",
+                    "number",
+                ],
+                cwd=_REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if issue_lookup.returncode == 0 and issue_lookup.stdout.strip():
+                try:
+                    found = json.loads(issue_lookup.stdout)
+                    if found:
+                        real_num = int(found[0]["number"])
+                        prompt = prompt.replace("#1", f"#{real_num}")
+                        scenario = copy.deepcopy(scenario)
+                        scenario["expected"]["issue_commented"] = real_num
+                except (ValueError, KeyError, TypeError):
+                    pass
         if approval == "approve":
             prompt = f"{prompt}\n\nWhen asked to approve the production plan, respond with 'yes'."
         elif approval == "reject":
             prompt = f"{prompt}\n\nWhen asked to approve the production plan, respond with 'no' and cancel."
 
         if agent == "codex":
+            codex_bin = shutil.which("codex") or "codex"
             cmd = [
-                "codex",
+                codex_bin,
                 "exec",
                 "--json",
                 "--ephemeral",
@@ -460,12 +489,35 @@ def _run_live_once(
             proc = subprocess.run(cmd, cwd=work_dir, capture_output=True, text=True, check=False)
             turns, in_tok, out_tok, output_text = _parse_codex_jsonl(proc.stdout)
         else:
-            stdin_text = "yes\n" if approval == "approve" else ("no\n" if approval == "reject" else None)
-            cmd = ["claude", "-p", scenario["prompt"], "--output-format", "json", "--max-turns", "15"]
+            env = os.environ.copy()
+            if not env.get("GH_REPO"):
+                repo_proc = subprocess.run(
+                    ["git", "remote", "get-url", "origin"],
+                    cwd=_REPO_ROOT,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if repo_proc.returncode == 0 and "github.com" in repo_proc.stdout:
+                    slug = repo_proc.stdout.strip().split("github.com")[-1].lstrip(":/").removesuffix(".git")
+                    if slug:
+                        env["GH_REPO"] = slug
+            claude_bin = shutil.which("claude") or "claude"
+            cmd = [
+                claude_bin,
+                "-p",
+                "--output-format",
+                "json",
+                "--max-turns",
+                "15",
+                "--permission-mode",
+                "bypassPermissions",
+            ]
             proc = subprocess.run(
                 cmd,
                 cwd=work_dir,
-                input=stdin_text,
+                env=env,
+                input=prompt,
                 capture_output=True,
                 text=True,
                 check=False,
@@ -476,12 +528,16 @@ def _run_live_once(
             except json.JSONDecodeError:
                 payload = {"result": proc.stdout}
             usage = payload.get("usage", {})
-            in_tok = int(usage.get("input_tokens", 0))
+            in_tok = (
+                int(usage.get("input_tokens", 0))
+                + int(usage.get("cache_creation_input_tokens", 0))
+                + int(usage.get("cache_read_input_tokens", 0))
+            )
             out_tok = int(usage.get("output_tokens", 0))
             turns = int(payload.get("num_turns", 0))
             output_text = str(payload.get("result", proc.stdout))
 
-        reader = LiveStateReader(agent_output=output_text, cwd=str(work_dir))
+        reader = LiveStateReader(agent_output=output_text, cwd=str(_REPO_ROOT))
         result = verify_scenario(scenario, mode="live", reader=reader)
         notes = "; ".join(result.failures) if result.failures else "All checks passed"
         return result, turns, in_tok, out_tok, notes
@@ -625,7 +681,7 @@ def run_harness(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run flagsmith-early-access scenario harness.")
     parser.add_argument("--mode", choices=["live", "mock"], default="mock")
-    parser.add_argument("--agent", choices=["codex", "claude"], default="codex")
+    parser.add_argument("--agent", choices=["codex", "claude"], default="claude")
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--scenario", default="all", help="Scenario ID (e.g. S1) or 'all'")
     parser.add_argument("--baseline", action="store_true", help="Also run no-skill baseline")
