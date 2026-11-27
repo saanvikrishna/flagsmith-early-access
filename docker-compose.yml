@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: flagsmith
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  flagsmith:
+    image: flagsmith/flagsmith:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/flagsmith
+      DJANGO_ALLOWED_HOSTS: "*"
+      ENABLE_ADMIN_ACCESS_USER_PASS: "True"
+      ALLOW_REGISTRATION_WITHOUT_INVITE: "True"
+
+  demo-app:
+    build:
+      context: .
+      dockerfile: self-hosted/Dockerfile.demo-app
+    depends_on:
+      flagsmith:
+        condition: service_started
+    ports:
+      - "3000:3000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "3000"
+      FLAGSMITH_SDK_API_URL: http://flagsmith:8000/api/v1/identities/
+
+volumes:
+  postgres_data:
