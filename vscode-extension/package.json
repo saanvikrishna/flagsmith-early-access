@@ -1,0 +1,93 @@
+{
+  "name": "flagsmith-early-access-vscode",
+  "displayName": "Flagsmith Early Access (Self-Hosted)",
+  "description": "Live inline Flagsmith feature flag values (CodeLens) and Early Access (ea-*) segment overrides for self-hosted Flagsmith.",
+  "version": "0.1.0",
+  "publisher": "early-access",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Flagsmith Early Access",
+      "properties": {
+        "flagsmithEarlyAccess.apiUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "Base URL of your self-hosted Flagsmith instance."
+        },
+        "flagsmithEarlyAccess.environmentKey": {
+          "type": "string",
+          "default": "",
+          "description": "Flagsmith Client-Side / Server-Side Environment Key (X-Environment-Key)."
+        },
+        "flagsmithEarlyAccess.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Flagsmith Admin API Token for querying and toggling ea-* Early Access segments."
+        },
+        "flagsmithEarlyAccess.defaultIdentity": {
+          "type": "string",
+          "default": "user_1",
+          "description": "Default Flagsmith identity identifier used for flag evaluation."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "flagsmithEarlyAccess.refreshFlags",
+        "title": "Flagsmith: Refresh Flags",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "flagsmithEarlyAccess.switchIdentity",
+        "title": "Flagsmith: Switch Identity",
+        "icon": "$(account)"
+      },
+      {
+        "command": "flagsmithEarlyAccess.toggleOverride",
+        "title": "Flagsmith: Toggle Early Access Override",
+        "icon": "$(eye)"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "flagsmithEarlyAccessView",
+          "name": "Flagsmith Early Access"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "flagsmithEarlyAccess.refreshFlags",
+          "when": "view == flagsmithEarlyAccessView",
+          "group": "navigation"
+        },
+        {
+          "command": "flagsmithEarlyAccess.switchIdentity",
+          "when": "view == flagsmithEarlyAccessView",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "flagsmithEarlyAccess.toggleOverride",
+          "when": "view == flagsmithEarlyAccessView && viewItem == flagItem",
+          "group": "inline"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test test/extension.test.js"
+  }
+}
