@@ -16,8 +16,16 @@ jobs:
   run-scenarios:
     name: Run Live Scenarios
     runs-on: ubuntu-latest
-    if: ${{ secrets.FLAGSMITH_API_KEY != '' && secrets.ANTHROPIC_API_KEY != '' }}
     steps:
+      - name: Check required secrets
+        env:
+          FLAGSMITH_API_KEY: ${{ secrets.FLAGSMITH_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$FLAGSMITH_API_KEY" ] || [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "FLAGSMITH_API_KEY and ANTHROPIC_API_KEY secrets are required for live runs."
+            exit 1
+          fi
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
