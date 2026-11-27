@@ -70,7 +70,7 @@ jobs:
       - name: Run Python unit & mock tests
         run: |
           ran=0
-          for dir in demo-seed skill/flagsmith-early-access/scripts harness; do
+          for dir in demo-seed skill/flagsmith-early-access/scripts harness self-hosted tui; do
             if [ -d "$dir" ] && [ -n "$(find "$dir" -maxdepth 1 -name 'test_*.py' -print -quit)" ]; then
               python3 -m unittest discover -s "$dir" -p "test_*.py" -v
               ran=1
@@ -81,13 +81,12 @@ jobs:
           fi
 
   demo-app-tests:
-    name: Demo App Tests
+    name: Demo App & VS Code Extension Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
           node-version: "20"
       - name: Install and test demo-app
         run: |
@@ -95,4 +94,11 @@ jobs:
             cd demo-app && npm ci && npm test
           else
             echo "demo-app not added yet; skipping."
+          fi
+      - name: Test VS Code extension
+        run: |
+          if [ -f vscode-extension/test/extension.test.js ]; then
+            node --test vscode-extension/test/extension.test.js
+          else
+            echo "vscode-extension not added yet; skipping."
           fi
