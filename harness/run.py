@@ -380,8 +380,39 @@ def _get_git_sha() -> str:
     return proc.stdout.strip() if proc.returncode == 0 else "unknown"
 
 
-def _run_live_once(scenario: dict[str, Any], baseline: bool = False) -> tuple[CheckResult, int, int, int, str]:
-    """Execute one live run against demo-seed, demo-app copy, and Claude Code CLI."""
+def _parse_codex_jsonl(stdout: str) -> tuple[int, int, int, str]:
+    """Extract (turns, input_tokens, output_tokens, text) from `codex exec --json` JSONL."""
+    turns = 0
+    in_tok = 0
+    out_tok = 0
+    messages: list[str] = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        ev_type = ev.get("type", "")
+        if ev_type == "turn.completed":
+            turns += 1
+            usage = ev.get("usage", {})
+            in_tok += int(usage.get("input_tokens", 0))
+            out_tok += int(usage.get("output_tokens", 0))
+        elif ev_type == "item.completed":
+            item = ev.get("item", {})
+            if item.get("type") == "agent_message" and item.get("text"):
+                messages.append(str(item["text"]))
+    return turns, in_tok, out_tok, "\n".join(messages) if messages else stdout
+
+
+def _run_live_once(
+    scenario: dict[str, Any],
+    baseline: bool = False,
+    agent: str = "codex",
+) -> tuple[CheckResult, int, int, int, str]:
+    """Execute one live run against demo-seed, demo-app copy, and Codex or Claude CLI."""
     seed_script = _REPO_ROOT / "demo-seed" / "seed_flagsmith.py"
     if seed_script.exists():
         subprocess.run(
@@ -401,34 +432,54 @@ def _run_live_once(scenario: dict[str, Any], baseline: bool = False) -> tuple[Ch
         if not baseline:
             skill_src = _REPO_ROOT / "skill" / "flagsmith-early-access"
             if skill_src.exists():
-                skill_dst = work_dir / ".claude" / "skills" / "flagsmith-early-access"
-                skill_dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(skill_src, skill_dst)
+                for skill_root in (".agents", ".claude"):
+                    skill_dst = work_dir / skill_root / "skills" / "flagsmith-early-access"
+                    skill_dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copytree(skill_src, skill_dst)
 
         approval = scenario.get("approval", "none")
-        stdin_text = "yes\n" if approval == "approve" else ("no\n" if approval == "reject" else None)
+        prompt = scenario["prompt"]
+        if approval == "approve":
+            prompt = f"{prompt}\n\nWhen asked to approve the production plan, respond with 'yes'."
+        elif approval == "reject":
+            prompt = f"{prompt}\n\nWhen asked to approve the production plan, respond with 'no' and cancel."
 
-        cmd = ["claude", "-p", scenario["prompt"], "--output-format", "json", "--max-turns", "15"]
-        proc = subprocess.run(
-            cmd,
-            cwd=work_dir,
-            input=stdin_text,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-        payload: dict[str, Any] = {}
-        try:
-            payload = json.loads(proc.stdout) if proc.stdout.strip() else {}
-        except json.JSONDecodeError:
-            payload = {"result": proc.stdout}
-
-        usage = payload.get("usage", {})
-        in_tok = int(usage.get("input_tokens", 0))
-        out_tok = int(usage.get("output_tokens", 0))
-        turns = int(payload.get("num_turns", 0))
-        output_text = str(payload.get("result", proc.stdout))
+        if agent == "codex":
+            cmd = [
+                "codex",
+                "exec",
+                "--json",
+                "--ephemeral",
+                "--skip-git-repo-check",
+                "-s",
+                "workspace-write",
+                "-C",
+                str(work_dir),
+                prompt,
+            ]
+            proc = subprocess.run(cmd, cwd=work_dir, capture_output=True, text=True, check=False)
+            turns, in_tok, out_tok, output_text = _parse_codex_jsonl(proc.stdout)
+        else:
+            stdin_text = "yes\n" if approval == "approve" else ("no\n" if approval == "reject" else None)
+            cmd = ["claude", "-p", scenario["prompt"], "--output-format", "json", "--max-turns", "15"]
+            proc = subprocess.run(
+                cmd,
+                cwd=work_dir,
+                input=stdin_text,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            payload: dict[str, Any] = {}
+            try:
+                payload = json.loads(proc.stdout) if proc.stdout.strip() else {}
+            except json.JSONDecodeError:
+                payload = {"result": proc.stdout}
+            usage = payload.get("usage", {})
+            in_tok = int(usage.get("input_tokens", 0))
+            out_tok = int(usage.get("output_tokens", 0))
+            turns = int(payload.get("num_turns", 0))
+            output_text = str(payload.get("result", proc.stdout))
 
         reader = LiveStateReader(agent_output=output_text, cwd=str(work_dir))
         result = verify_scenario(scenario, mode="live", reader=reader)
@@ -515,6 +566,7 @@ def run_harness(
     scenario_filter: str = "all",
     baseline: bool = False,
     results_dir: Path | None = None,
+    agent: str = "codex",
 ) -> list[RunRecord]:
     """Execute the harness across selected scenarios and write results."""
     scenarios = load_scenarios(scenario_filter)
@@ -528,7 +580,7 @@ def run_harness(
                 res = verify_scenario(sc, state=end_state, mode="mock")
                 notes = "; ".join(res.failures) if res.failures else f"All {res.checks_run} checks passed"
             else:
-                res, turns, in_tok, out_tok, notes = _run_live_once(sc, baseline=False)
+                res, turns, in_tok, out_tok, notes = _run_live_once(sc, baseline=False, agent=agent)
 
             records.append(
                 RunRecord(
@@ -550,7 +602,7 @@ def run_harness(
                     b_res = verify_scenario(sc, state=b_state, mode="mock")
                     b_notes = "; ".join(b_res.failures) if b_res.failures else "Passed"
                 else:
-                    b_res, b_turns, b_in, b_out, b_notes = _run_live_once(sc, baseline=True)
+                    b_res, b_turns, b_in, b_out, b_notes = _run_live_once(sc, baseline=True, agent=agent)
 
                 records.append(
                     RunRecord(
@@ -573,6 +625,7 @@ def run_harness(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run flagsmith-early-access scenario harness.")
     parser.add_argument("--mode", choices=["live", "mock"], default="mock")
+    parser.add_argument("--agent", choices=["codex", "claude"], default="codex")
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--scenario", default="all", help="Scenario ID (e.g. S1) or 'all'")
     parser.add_argument("--baseline", action="store_true", help="Also run no-skill baseline")
@@ -585,6 +638,7 @@ def main(argv: list[str] | None = None) -> int:
         scenario_filter=args.scenario,
         baseline=args.baseline,
         results_dir=args.results_dir,
+        agent=args.agent,
     )
 
     skill_records = [r for r in records if not r.baseline]
