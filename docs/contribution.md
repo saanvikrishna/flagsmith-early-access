@@ -1,6 +1,6 @@
 # Contributing `flagsmith-early-access` to the Official Flagsmith Skills Repository
 
-This document provides the ready-to-open Pull Request description and verification checklist for contributing `skill/flagsmith-early-access/` to the official Flagsmith skills repository.
+This document provides the ready-to-submit Pull Request specification and verification record for upstreaming `skill/flagsmith-early-access/` into the official Flagsmith skills repository.
 
 ---
 
@@ -14,11 +14,11 @@ This document provides the ready-to-open Pull Request description and verificati
 
 ### Summary
 
-Adds the self-contained **`flagsmith-early-access`** skill (`skill/flagsmith-early-access/`) for managing per-customer and per-user early access in Flagsmith across the full lifecycle:
+Adds the self-contained **`flagsmith-early-access`** skill (`skill/flagsmith-early-access/`) for managing per-customer and per-user early access in Flagsmith across the complete lifecycle:
 
-**`grant` → `verify` → `record` → `expire` → `revoke` or `graduate`** (plus read-only **`audit`**)
+**`grant` -> `verify` -> `record` -> `expire` -> `revoke` or `graduate`** (plus read-only **`audit`**)
 
-While general Flagsmith skills operate at the environment level, `flagsmith-early-access` targets individual identities and scoped `ea-<flag>-<customer>` segments with strict blast-radius, human-approval, and rollback guardrails.
+While general Flagsmith skills manage environment-wide rollouts, `flagsmith-early-access` targets individual identities and scoped `ea-<flag>-<customer>` segments with strict blast-radius, human-approval, negative-control, and snapshot-rollback guardrails.
 
 ### Included Files
 
@@ -39,39 +39,38 @@ skill/flagsmith-early-access/
 
 ### Supported Modes
 
-1. **`grant`** — Detects the app's identity/trait convention, presents a fixed 6-line approval plan, grants a single identity override or `ea-<flag>-<customer>` segment, verifies target ON and negative control OFF (rolling back via snapshot on failure), and records a GitHub issue trail + expiry follow-up.
+1. **`grant`** — Detects the application's identity/trait convention, presents a fixed 6-line approval plan, grants a single identity override or `ea-<flag>-<customer>` segment, verifies target ON and negative control unchanged (rolling back via snapshot on mismatch), and records a GitHub issue trail + expiry follow-up.
 2. **`revoke`** — Snapshots state, removes only the target early-access override/segment, verifies target OFF and negative control unchanged, and closes the follow-up issue.
-3. **`graduate`** — Confirms the environment default is ON, cleans up all `ea-<flag>-*` segments and overrides, verifies default behavior, and closes related `early-access` issues.
+3. **`graduate`** — Confirms the environment default is ON, cleans up all `ea-<flag>-*` segments and identity overrides, verifies default behavior, and closes related `early-access` issues.
 4. **`audit`** — Read-only report of all active and overdue `ea-*` segments and `early-access` GitHub issues.
 
 ### Compatibility & Dependencies
 
 - **License:** MIT (matching `LICENSE` at repository root).
-- **Flagsmith CLI:** Tested against `flagsmith v2.0.0` (`--json` / `--jq` output filtering).
-- **External Tools:** `jq` (JSON filtering), `gh` (optional, for GitHub issue trail & expiry tracking).
+- **Flagsmith CLI:** Tested live against `flagsmith v2.0.0` (`--json --jq` output filtering and `--no-input` automation).
+- **External Tools:** `jq` (JSON filtering), `gh` (GitHub CLI for issue trail & expiry tracking).
 
 ### Verification Summary
 
-- **Safety & Script Tests:** `skill/flagsmith-early-access/scripts/test_scripts.py` covers snapshot/rollback, negative-control failure detection, and audit formatting.
-- **Scenario Harness (`harness/run.py`):** **45/45 passed** in `mock` mode at skill SHA `86562ea` (3 runs each across 10 core scenarios `S1–S10` and 5 adversarial/safety scenarios `X1–X5`; see `results/scenarios.md`).
-- **Token Efficiency (`results/tokens.md`, `mock` mode):**
-  - `grant (org)`: 2,430 total tokens vs. 5,350 baseline
-  - `grant (user)`: 2,260 total tokens vs. 4,500 baseline
-  - `revoke`: 2,040 total tokens vs. 4,500 baseline
-  - `graduate`: 1,970 total tokens vs. 4,500 baseline
-  - `audit`: 1,360 total tokens vs. 4,500 baseline
-- **Live Cloud Note:** End-to-end live Flagsmith Cloud + Anthropic API execution is documented in `docs/BLOCKERS.md` (pending human checkpoints H1–H3).
+- **Live Flagsmith Cloud Runs (`results/demo-run.md`, `results/scenarios.md`):** **6/6 PASS** at skill SHA `ed91a7e` using `flagsmith v2.0.0` and `claude-opus-5-5` across `S1` (`grant org`, 2 runs), `S2` (`grant user`), `S3` (`revoke`), `S4` (`graduate`), `S5` (`audit`), and `X2` (environment-wide safety refusal).
+- **Live Token Efficiency (`results/tokens.md`):**
+  - `grant (org)` (`S1`, median of 2): `605,541` input tokens (fewer than `610,759` no-skill baseline) | `5,215` output tokens
+  - `grant (user)` (`S2`): `477,132` input | `3,776` output
+  - `revoke` (`S3`): `417,701` input | `3,061` output
+  - `graduate` (`S4`): `547,411` input | `4,109` output
+  - `audit` (`S5`): `234,687` input | `1,899` output
+  - `safety (refusal)` (`X2`): `191,961` input | `1,648` output
+- **Offline Regression Suite (`results/scenarios.md`):** **45/45 PASS** (3 runs each across 10 core scenarios `S1–S10` and 5 adversarial safety tests `X1–X5`).
+- **Unit & Integration Suites (`.github/workflows/ci.yml`):** **55/55 PASS** across `demo-app` (12), `demo-seed` (7), `scripts` (6), `harness` (10), `self-hosted` (3), `tui` (10), and `vscode-extension` (7).
 
 ---
 
 ## Pre-Merge Checklist
 
-- [x] Skill folder `skill/flagsmith-early-access/` is self-contained (no external repo dependencies).
+- [x] Skill folder `skill/flagsmith-early-access/` is self-contained with zero external repo dependencies.
 - [x] License is MIT-compatible (`LICENSE` + `CONTRIBUTING-NOTE.md`).
-- [x] Tested against Flagsmith CLI `v2.0.0`.
+- [x] Verified live against Flagsmith CLI `v2.0.0` and Flagsmith Cloud (`early-access-demo`).
 - [x] All 4 modes (`grant`, `revoke`, `graduate`, `audit`) documented with `--json --jq` examples.
-- [x] Safety guardrails enforced: 6-line human approval gate, negative-control verification, automatic snapshot rollback, and prompt-injection resistance for issue bodies.
-- [x] Helper script unit/safety tests (`scripts/test_scripts.py`) pass.
-- [x] Scenario harness (`harness/run.py`) passes 45/45 in `mock` mode (`results/scenarios.md`).
-- [ ] Live Flagsmith Cloud + Anthropic API run verified after human checkpoints H1–H3 (`docs/BLOCKERS.md`).
-- [ ] Human review & PR submission to the official Flagsmith skills repository (once public/target branch is confirmed).
+- [x] Safety guardrails enforced and tested: 6-line human approval gate, negative-control verification, automatic snapshot rollback, and prompt-injection isolation.
+- [x] `SKILL.md` frontmatter and `< 2,000`-word budget validated; `shellcheck` clean on all `scripts/*.sh`.
+- [x] Full CI suite (`55/55`), Offline Regression Suite (`45/45`), and Live Flagsmith Cloud runs (`6/6`) verified green.

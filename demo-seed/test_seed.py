@@ -127,15 +127,20 @@ class FakeFlagsmithBackend:
         if len(cmd) > 2 and cmd[1] == "flag" and cmd[2] == "update":
             ek = (env or {}).get("FLAGSMITH_ENVIRONMENT", "env-prod-key")
             feat_name = cmd[3]
-            seg_name = cmd[cmd.index("--segment") + 1]
             enabled = "--enable" in cmd
             fid = next(f["id"] for f in self.features.values() if f["name"] == feat_name)
-            sid = next(s["id"] for s in self.segments.values() if s["name"] == seg_name)
-            eid = 1 if ek == "env-prod-key" else 2
-            fs_id = self._alloc_id()
-            self.feature_segments[fs_id] = {"id": fs_id, "feature": fid, "segment": sid, "environment": eid, "priority": 0}
-            st = {"id": self._alloc_id(), "identity": None, "feature": fid, "enabled": enabled, "feature_segment": fs_id}
-            self.feature_states[ek].append(st)
+            if "--segment" in cmd:
+                seg_name = cmd[cmd.index("--segment") + 1]
+                sid = next(s["id"] for s in self.segments.values() if s["name"] == seg_name)
+                eid = 1 if ek == "env-prod-key" else 2
+                fs_id = self._alloc_id()
+                self.feature_segments[fs_id] = {"id": fs_id, "feature": fid, "segment": sid, "environment": eid, "priority": 0}
+                st = {"id": self._alloc_id(), "identity": None, "feature": fid, "enabled": enabled, "feature_segment": fs_id}
+                self.feature_states[ek].append(st)
+            else:
+                for st in self.feature_states[ek]:
+                    if st["feature"] == fid and st["identity"] is None and st["feature_segment"] is None:
+                        st["enabled"] = enabled
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
         sdk = "--sdk" in cmd
         method = "GET"
