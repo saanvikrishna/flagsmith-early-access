@@ -113,6 +113,20 @@ class TestRunnerMockMode(unittest.TestCase):
             tokens_md = (out_dir / "tokens.md").read_text(encoding="utf-8")
             self.assertIn("Baseline Input (med)", tokens_md)
 
+    def test_parse_codex_jsonl(self) -> None:
+        from run import _parse_codex_jsonl
+
+        sample = "\n".join([
+            '{"type":"thread.started","thread_id":"t1"}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"PLAN (Production)..."}}',
+            '{"type":"turn.completed","usage":{"input_tokens":810,"output_tokens":145}}',
+        ])
+        turns, in_tok, out_tok, msg = _parse_codex_jsonl(sample)
+        self.assertEqual(turns, 1)
+        self.assertEqual(in_tok, 810)
+        self.assertEqual(out_tok, 145)
+        self.assertIn("PLAN (Production)", msg)
+
 
 if __name__ == "__main__":
     unittest.main()
