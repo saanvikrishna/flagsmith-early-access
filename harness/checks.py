@@ -8,6 +8,7 @@ Supports both:
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from typing import Any
@@ -150,8 +151,9 @@ class LiveStateReader(StateReader):
         self.cwd = cwd
 
     def _run_json(self, cmd: list[str]) -> Any:
+        resolved = [shutil.which(cmd[0]) or cmd[0], *cmd[1:]]
         proc = subprocess.run(
-            cmd,
+            resolved,
             cwd=self.cwd,
             capture_output=True,
             text=True,
@@ -173,7 +175,9 @@ class LiveStateReader(StateReader):
             return bool(val.get("enabled")) if isinstance(val, dict) else bool(val)
         if isinstance(flags, list):
             for item in flags:
-                if item.get("feature", {}).get("name") == flag or item.get("name") == flag:
+                feat = item.get("feature")
+                fname = feat.get("name") if isinstance(feat, dict) else (feat or item.get("name"))
+                if fname == flag:
                     return bool(item.get("enabled"))
         return None
 
@@ -181,7 +185,8 @@ class LiveStateReader(StateReader):
         data = self._run_json(["flagsmith", "flag", "list", "--json"])
         items = data if isinstance(data, list) else data.get("results", [])
         for item in items:
-            name = item.get("feature", {}).get("name") or item.get("name")
+            feat = item.get("feature")
+            name = feat.get("name") if isinstance(feat, dict) else (feat or item.get("name"))
             if name == flag:
                 return bool(item.get("enabled", False))
         return None

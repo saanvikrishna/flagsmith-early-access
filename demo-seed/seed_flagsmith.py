@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -144,7 +145,8 @@ class FlagsmithCLI:
         sdk: bool = False,
         env_key: str | None = None,
     ) -> Any:
-        cmd = ["flagsmith", "api"]
+        resolved_bin = shutil.which("flagsmith") or "flagsmith"
+        cmd = [resolved_bin, "api"]
         if sdk:
             cmd.append("--sdk")
         if env_key:
@@ -252,27 +254,28 @@ def _ensure_segment_with_override(
     seg_id = created_seg["id"]
     existing_segments[name] = created_seg
 
-    feat_seg = cli.api(
-        "api/v1/features/feature-segments/",
-        method="POST",
-        payload={
-            "feature": feature_id,
-            "segment": seg_id,
-            "environment": env_id,
-            "priority": 0,
-        },
-    )
-    feat_seg_id = feat_seg["id"]
-
-    cli.api(
-        f"api/v1/environments/{env_api_key}/featurestates/",
-        method="POST",
-        payload={
-            "feature": feature_id,
-            "enabled": bool(spec["enabled"]),
-            "feature_segment": feat_seg_id,
-        },
-    )
+    resolved_bin = shutil.which("flagsmith") or "flagsmith"
+    env = os.environ.copy()
+    if cli.config.api_key:
+        env["FLAGSMITH_API_KEY"] = cli.config.api_key
+    if env_api_key:
+        env["FLAGSMITH_ENVIRONMENT"] = env_api_key
+    if cli.config.organisation:
+        env["FLAGSMITH_ORGANISATION"] = cli.config.organisation
+    flag_cmd = [
+        resolved_bin,
+        "flag",
+        "update",
+        spec["feature"],
+        "--enable" if spec["enabled"] else "--disable",
+        "--segment",
+        name,
+        "--yes",
+        "--no-input",
+    ]
+    proc = cli.runner(flag_cmd, text=True, capture_output=True, check=False, env=env)
+    if proc.returncode != 0:
+        raise RuntimeError(f"Failed to set segment override: {proc.stderr.strip()}")
 
 
 def seed_live(cli: FlagsmithCLI) -> None:
@@ -342,15 +345,31 @@ def seed_live(cli: FlagsmithCLI) -> None:
                         payload={"enabled": False},
                     )
 
-        # Upsert identities and traits via SDK API
+        # Upsert identities and traits via Flagsmith CLI evaluate --persist
+        resolved_bin = shutil.which("flagsmith") or "flagsmith"
         for ident in IDENTITIES:
-            cli.api(
-                "api/v1/identities/",
-                method="POST",
-                payload=build_identity_payload(ident),
-                sdk=True,
-                env_key=env_key,
-            )
+            env = os.environ.copy()
+            if cli.config.api_key:
+                env["FLAGSMITH_API_KEY"] = cli.config.api_key
+            env["FLAGSMITH_ENVIRONMENT"] = env_key
+            if cli.config.organisation:
+                env["FLAGSMITH_ORGANISATION"] = cli.config.organisation
+            eval_cmd = [
+                resolved_bin,
+                "evaluate",
+                "--identity",
+                ident["identifier"],
+                "--trait",
+                f"org_id={ident['org_id']}",
+                "--trait",
+                f"plan={ident['plan']}",
+                "--persist",
+                "--no-input",
+                "--json",
+            ]
+            proc = cli.runner(eval_cmd, text=True, capture_output=True, check=False, env=env)
+            if proc.returncode != 0:
+                raise RuntimeError(f"Failed to persist identity {ident['identifier']}: {proc.stderr.strip()}")
 
     # 4. Create the expired EA segment and internal_staff segment in Production
     prod_env = env_by_name["Production"]

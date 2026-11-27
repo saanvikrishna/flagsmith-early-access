@@ -114,6 +114,29 @@ class FakeFlagsmithBackend:
         env: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         self.commands.append(cmd)
+        if len(cmd) > 1 and cmd[1] == "evaluate":
+            ek = (env or {}).get("FLAGSMITH_ENVIRONMENT", "env-prod-key")
+            ident_id = cmd[cmd.index("--identity") + 1]
+            traits: dict[str, str] = {}
+            for idx, tok in enumerate(cmd):
+                if tok == "--trait" and idx + 1 < len(cmd) and "=" in cmd[idx + 1]:
+                    k, v = cmd[idx + 1].split("=", 1)
+                    traits[k] = v
+            self.identities[ek][ident_id] = traits
+            return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps({"flags": {}}), stderr="")
+        if len(cmd) > 2 and cmd[1] == "flag" and cmd[2] == "update":
+            ek = (env or {}).get("FLAGSMITH_ENVIRONMENT", "env-prod-key")
+            feat_name = cmd[3]
+            seg_name = cmd[cmd.index("--segment") + 1]
+            enabled = "--enable" in cmd
+            fid = next(f["id"] for f in self.features.values() if f["name"] == feat_name)
+            sid = next(s["id"] for s in self.segments.values() if s["name"] == seg_name)
+            eid = 1 if ek == "env-prod-key" else 2
+            fs_id = self._alloc_id()
+            self.feature_segments[fs_id] = {"id": fs_id, "feature": fid, "segment": sid, "environment": eid, "priority": 0}
+            st = {"id": self._alloc_id(), "identity": None, "feature": fid, "enabled": enabled, "feature_segment": fs_id}
+            self.feature_states[ek].append(st)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
         sdk = "--sdk" in cmd
         method = "GET"
         if "-X" in cmd:
@@ -276,7 +299,7 @@ class TestSeedFlagsmith(unittest.TestCase):
         )
 
         # Verify exact CLI flags used (flagsmith api ... --json --no-input)
-        self.assertTrue(any(cmd[:3] == ["flagsmith", "api", "--sdk"] for cmd in backend.commands))
+        self.assertTrue(any("evaluate" in cmd and "--persist" in cmd for cmd in backend.commands))
         self.assertTrue(all("--no-input" in cmd for cmd in backend.commands))
 
         # Run a second time and assert identical state
