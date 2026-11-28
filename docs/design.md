@@ -1,111 +1,103 @@
-# Design Document — `flagsmith-early-access`
+# Design: `flagsmith-early-access`
 
-This document describes the architecture and design decisions for the **Early Access** Agent Skill (`grant -> verify -> record -> expire -> revoke or graduate`, plus read-only `audit`). All CLI commands align with `flagsmith` CLI `v2.0.0` documented in [verified-facts.md](verified-facts.md).
+Per-customer early access for Flagsmith: `grant -> verify -> track expiry -> revoke | expire | graduate`, plus read-only `audit`.
+CLI shapes and quirks are in [verified-facts.md](verified-facts.md) and `skill/flagsmith-early-access/references/cli-commands.md`.
 
----
+## 1. Division of labour
 
-## 1. Grant Mechanism: Identity Override vs. Org Segment
+The agent talks to the human; one script touches Flagsmith.
 
-The skill always selects the **narrowest possible blast radius** for the requested customer:
+| Layer | Owns |
+|---|---|
+| `SKILL.md` (~800 words) | Intake (issue or chat), the approval gate, relaying output, untrusted-issue handling, the 3-line report |
+| `scripts/ea.sh` | Every Flagsmith and GitHub operation: identity resolution, preflight, snapshot, write, verify, rollback, trail |
 
-| Request Scope | Mechanism | CLI Command Pattern |
-|---|---|---|
-| **Single user** (e.g., `user_42`) | Identity override on the feature in the target environment | `flagsmith flag update <flag> --enable --identifier <id> --no-input` |
-| **Whole organisation / company** (e.g., `acme`) | Dedicated org segment `ea-<flag>-<org>` matching the org trait + segment override on the feature | 1. `flagsmith segment create ea-<flag>-<org> --rules '<rule_json>' --description "<marker>" --no-input`<br>2. `flagsmith flag update <flag> --enable --segment ea-<flag>-<org> --no-input` |
+Why: the judgment calls (who is the customer, did the human say yes) need a model; the multi-step, failure-prone mechanics do not. Moving them into a deterministic script makes them testable (section 8) and keeps the agent's context small. The agent is told never to run Flagsmith writes itself.
 
-### Why two mechanisms?
+## 2. Subcommands
 
-- Flagsmith CLI `v2.0.0` natively supports both identity overrides (`flag update --identifier`, `flag delete --identifier`, `flag list --feature <f> --identities`) and segment overrides (`segment create`, `flag update --segment`, `flag delete --segment`).
-- Using an identity override for a single user avoids creating an unnecessary segment.
-- Using a dedicated `ea-<flag>-<org>` segment for a company ensures **all current and future users** with `org_id = <org>` receive access atomically while keeping the override isolated from pre-existing segments (such as `internal_staff`).
-- **Environment-wide default changes (`flagsmith flag update <flag> --enable` without `--segment` or `--identifier`) are strictly forbidden** in `grant` mode.
+| Command | Effect |
+|---|---|
+| `detect [--dir D]` | Local grep: which trait (`org_id`, `tenant_id`, ...) names a customer. Prints `trait=`, `ambiguous` or `none` |
+| `grant <flag> org:<c>\|user:<id> --expires YYYY-MM-DD [--issue N] [--trait T] [--target ID] [--control ID]` | Add early access |
+| `revoke <flag> org:<c>\|user:<id> [--issue N]` | Remove it and close the follow-up issue |
+| `graduate <flag>` | After the default is ON: remove every `ea-<flag>-*` segment and identity override, close issues |
+| `audit` | Read-only table with `OVERDUE`, `STALE`, `UNTRACKED` |
+| `expire` | Revoke every overdue grant after one approval; close stale follow-up issues |
 
----
+Exit codes: 0 ok, 3 stopped or rolled back, 2 usage. Every `STOP <reason>` line is a clean, no-change exit.
 
-## 2. Discovery Marker (Zero-Database Audit & Cleanup)
+## 3. Grant mechanism: narrowest blast radius
 
-Early-access grants remain discoverable by `audit`, `revoke`, and `graduate` with zero external database state:
+| Scope | Mechanism |
+|---|---|
+| One user (`user:<id>`) | Identity override on the feature. Refused if the identity does not already exist (a typo would silently create one) |
+| A customer (`org:<c>`) | Segment `ea-<flag>-<customer>` (rule: `<trait> EQUAL <customer>`) plus a segment override. All current and future members get access; pre-existing segments such as `internal_staff` are untouched |
 
-1. **Org segments:**
-   - **Name prefix:** `ea-<flag>-<org>` (lowercase, sanitized).
-   - **Description field:** structured key-value marker:
-     `early-access; flag=<flag>; customer=<customer>; expires=<YYYY-MM-DD>; issue=<url>`
-   - `audit` and `graduate` filter `flagsmith segment list --json` for names starting with `ea-` (and `ea-<flag>-` for `graduate`).
+The environment default is never changed, and `grant` stops if the default is already ON. All writes address segments by **id**, because the CLI allows duplicate segment names and name-based commands then fail as ambiguous. `ea.sh` refuses to create a duplicate and stops if one exists.
 
-2. **Identity overrides & GitHub trail:**
-   - Because identity overrides do not carry a description field in Flagsmith, every grant (org and single-user) opens a follow-up GitHub issue:
-     - **Title:** `Revoke early access: <flag> for <customer> (due <YYYY-MM-DD>)`
-     - **Label:** `early-access`
-     - **Body:** structured metadata (`flag`, `customer`, `mechanism`, `identifier`/`segment`, `environment`, `expires`, and the exact revoke command).
-   - `audit` combines `flagsmith segment list`, `flagsmith api` / `flagsmith flag list --feature <f> --identities`, and `gh issue list --label early-access` to produce a complete view of active and overdue grants.
+## 4. Discovery without a database
 
----
+- **Org grants** are found by segment name `ea-<flag>-<customer>` and a description marker:
+  `early-access; flag=<flag>; customer=<customer>; expires=<YYYY-MM-DD>; issue=#<n>`.
+- **User grants** (identity overrides carry no description) are found via `flag list --feature <f> --identities` and matched to a GitHub follow-up issue.
+- **The follow-up issue** is titled `Revoke early access: <flag> for <customer> (due YYYY-MM-DD)`. `ea.sh` tracks issues **by title**, so it works even when the `gh` account cannot apply the `early-access` label (the label is attempted; if that fails the issue is created unlabeled and the output says so).
 
-## 3. Identity Detection Rules
+`audit` joins the two sources and flags:
 
-Before modifying Flagsmith, the agent inspects the target repository (`demo-app/` or the user's codebase) to determine how customers are identified:
+| Flag | Meaning |
+|---|---|
+| `OVERDUE` | Expiry date has passed |
+| `STALE` | An open follow-up issue exists but no live override does |
+| `UNTRACKED` | An identity override exists with no follow-up issue |
 
-1. **Search order:** Scan for Flagsmith SDK calls (`identify(`, `getIdentityFlags`, `get_identity_flags`, `getFlags`, `setTrait`) and common customer/org trait keys (`org_id`, `organization_id`, `company_id`, `tenant_id`, `account_id`).
-2. **Determine identifier vs. trait:**
-   - If the request names a user ID matching the app's `identify(...)` pattern (e.g., `user_42`), use **identity override**.
-   - If the request names a company/org and the codebase passes an org trait (e.g., `org_id`), use an **org segment** on that trait.
-3. **Ambiguity rule (S10):** If two or more candidate org traits appear in the codebase (e.g., both `org_id` and `tenant_id` with equal weight) and the request does not specify which one, **stop and ask the user exactly one clarifying question** before applying any Flagsmith changes.
+## 5. Identity and control resolution
 
----
+`ea.sh` resolves identities from Flagsmith itself (edge-identities API plus traits, falling back to the core identities API on self-hosted), scanning up to `EA_MAX_SCAN` (default 40) identities with reads run in parallel (`EA_JOBS`, default 8).
 
-## 4. Negative Control Selection
+- **Target** for an org grant: the first identity whose trait equals the customer (or `--target`, validated against the trait).
+- **Negative control:** an identity whose trait is a *different* customer and whose current state equals the default (or `--control`). It must not be in the customer.
+- Verification evaluates persisted traits only (never `--trait`), so real drift shows up.
 
-Every `grant` and `revoke` verification step pairs the target check with a **negative control** — an identity belonging to a *different* customer/org that must remain unchanged:
+## 6. Approval gate
 
-1. **Automatic selection:** Inspect identities and traits in the codebase, seed data, or Flagsmith segment/override list to pick a known non-target org (e.g., when granting to `acme`, select `globex` / `user_3`).
-2. **Fallback:** If no other org/identity can be resolved from the codebase or Flagsmith state, ask the user for a control identifier before executing any writes.
-3. **Assertion:**
-   - On `grant`: `flagsmith evaluate <flag> --identity <target>` -> enabled (`true`); `flagsmith evaluate <flag> --identity <control>` -> unchanged from pre-flight snapshot.
-   - On `revoke`: `flagsmith evaluate <flag> --identity <target>` -> disabled (`false`, matching default); `flagsmith evaluate <flag> --identity <control>` -> unchanged.
-
----
-
-## 5. Approval Plan Format (6-Line Gate)
-
-Before any write in `grant`, `revoke`, or `graduate` (mandatory in Production; displayed in non-Production), the agent outputs **at most 6 lines** plus the confirmation prompt:
+Without `--approved`, every write command is a read-only dry run: a `PREFLIGHT` line, the exact 6-line `PLAN`, then exit 3.
 
 ```text
-PLAN (Production)
-Change : add segment override ea-new_dashboard-acme -> new_dashboard ON
-Who    : org_id = acme (2 identities)
-Control: org_id = globex must stay OFF
-Expires: 2027-01-15 (follow-up issue will be created)
-Undo   : flagsmith flag delete new_dashboard --segment ea-new_dashboard-acme --yes --no-input && flagsmith segment delete ea-new_dashboard-acme --yes --no-input
+PLAN (<environment>)
+Change : add segment override ea-<flag>-<customer> -> <flag> ON
+Who    : <trait> = <customer> (<target> + others in <customer>)
+Control: <control> (<trait>=<other>) must stay OFF
+Expires: <YYYY-MM-DD> (follow-up issue will be created)
+Undo   : ea.sh revoke <flag> org:<customer> --approved
 Approve? (yes/no)
 ```
 
-Zero writes execute until the human responds affirmatively (`yes`).
+The agent shows it verbatim, waits for an explicit yes, and re-runs the identical command with `--approved`. `expire` prints one plan listing every revoke and every stale issue to close.
 
----
+## 7. Snapshot, verify, rollback, trail
 
-## 6. Exact Snapshot & Rollback
+With `--approved`:
 
-Before applying any write:
+1. **Snapshot** the flag's default, segment overrides, identity overrides and `ea-<flag>-*` segments to a JSON file (path printed).
+2. **Apply** the single narrowest change.
+3. **Verify** target and control by evaluating both. Grant: target ON, control unchanged. Revoke: target back to default, control unchanged.
+4. **Roll back** on any failure (write error, wrong target, control drift): remove what was added, or restore what was removed (reusing the segment id rather than creating a duplicate), then **re-verify**. Output is `ROLLED BACK ... verified` or `ROLLBACK INCOMPLETE ... restore manually from <snapshot>`.
+5. **Trail** (never blocks or undoes the Flagsmith result): create the follow-up issue and comment on the source issue; on revoke, graduate and expire, close the issues. Without `gh`, it prints `TRAIL skipped`.
 
-1. **Snapshot:** `scripts/snapshot.sh` captures the exact pre-change state of:
-   - The target flag's environment default and existing overrides (`flagsmith flag get <flag> --json` and `flagsmith flag list --feature <flag> --json`).
-   - Whether `ea-<flag>-<org>` already existed (`flagsmith segment get ea-<flag>-<org> --json`).
-2. **Rollback trigger:** If post-apply verification fails (target did not reach expected state, or negative control changed) or a CLI write exits non-zero midway:
-   - Immediately restore the pre-change state: delete any newly created segment override (`flagsmith flag delete ... --yes --no-input`), delete any newly created `ea-` segment (`flagsmith segment delete ... --yes --no-input`), or restore any prior override value from the snapshot.
-   - Re-run `flagsmith evaluate` for both target and control to prove the environment returned to its exact start state.
+### Never trust exit codes
 
----
+The npm `@flagsmith/cli` wrapper always exits 0, even on errors; the native binary exits 1. `ea.sh` therefore parses stdout JSON, treats a line starting with `Error` on stderr as failure, and re-reads state after writes.
 
-## 7. Verification & Token Budget
+## 8. Testing and benchmarking
 
-The skill is validated across two complementary suites ([results/scenarios.md](../results/scenarios.md)):
+- `harness/test_ea.py` runs the real `ea.sh` against a stateful fake Flagsmith CLI and `gh` (`harness/fake_cli/`) with fault injection (`FAKE_FAIL` midway CLI error, `FAKE_DRIFT` control drift, exit-code modes, read-only `gh`, no-label `gh`): 24 tests.
+- `harness/bench.py` is the live benchmark against Flagsmith Cloud: a two-turn approval (the agent must stop and show the PLAN; the harness then resumes with yes or no) that records whether anything was written before approval. `harness/fault/flagsmith` injects live faults for skill and baseline alike (X1 real mid-flight control drift, X4 midway 502).
+- Results: [results/tokens.md](../results/tokens.md), [results/scenarios.md](../results/scenarios.md).
 
-- **Live Flagsmith Cloud Verification:** **6/6** end-to-end scenarios (`S1`, `S2`, `S3`, `S4`, `S5`, `X2`) verified against Flagsmith Cloud (`early-access-demo`) and `claude-opus-5-5`, consuming fewer input tokens than the no-skill baseline (`605,541` vs. `610,759` on `S1`).
-- **Offline Regression Suite:** **45/45** deterministic checks (`S1–S10` and `X1–X5`, 3 runs each) via `make harness-offline` in CI.
+## 9. Token efficiency
 
-Token efficiency practices enforced across `SKILL.md`:
-
-- **Strict `--jq` filtering:** Every `flagsmith` and `gh` JSON call passes `--jq` (or `-q`) to extract only the fields needed for the next step.
-- **Progressive disclosure:** `SKILL.md` stays concise (`< 2,000` words, enforced in CI), with command catalogs, detection patterns, and issue templates isolated in `skill/flagsmith-early-access/references/`.
-- **Single-line helper summaries:** `scripts/snapshot.sh`, `scripts/verify.sh`, and `scripts/audit.sh` collapse multi-step operations into compact single-line outputs.
-- **3-line final summary:** Every run concludes with action taken, verification result, and issue/trail link.
+- `SKILL.md` is ~800 words; the mechanics live in `ea.sh`, not in the prompt.
+- `ea.sh` emits a few compact lines (`PREFLIGHT`, `PLAN`, `APPLIED`, `VERIFY`, `TRAIL`), so the agent never reads raw CLI JSON.
+- Reads run in parallel inside the script, not as agent turns.
+- `references/cli-commands.md` is read only when `ea.sh` reports something unexpected.

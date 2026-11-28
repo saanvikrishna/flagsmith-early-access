@@ -1,99 +1,46 @@
-# Verified Flagsmith CLI v2.0.0 & `gh` Commands
+# Flagsmith CLI v2 - verified shapes & quirks (for debugging `ea.sh`)
 
-All commands below were verified against `flagsmith version v2.0.0`. Always pass `--json --jq` to keep output minimal, and `--no-input` on non-interactive commands.
+You normally never need these: `ea.sh` wraps them. Read this only when `ea.sh` reports something unexpected.
+Everything here was verified live against Flagsmith Cloud with `flagsmith v2.0.0`.
 
-## Auth & Context
+## Quirks that shape `ea.sh`
+
+| Quirk | Consequence | How `ea.sh` handles it |
+|---|---|---|
+| The npm wrapper (`@flagsmith/cli`) **always exits 0**, even on `Error:` (the native binary exits 1) | You can't gate on `$?` | Parses stdout JSON and reads `Error` from stderr. Re-reads state after every write |
+| `segment create` **allows duplicate names**. Name lookups then fail with `is ambiguous (2 matches)` | A retried grant would break revoke | Refuses grants when the segment exists. Uses segment **ids** for every write. Stops on duplicates |
+| `flag update --identifier <unknown>` **silently creates the identity** | A typo grants a feature to a ghost identity | Refuses user grants unless the identity already exists |
+| `evaluate --trait k=v` overlays transient traits | Hides real drift | Verification uses persisted traits only |
+| Status lines (`✓ Created ...`) go to stderr; JSON goes to stdout | | Captured separately |
+| Windows `jq.exe` emits CRLF | Values carry `\r` | `ea.sh` strips CR |
+| Edge evaluation can lag a write by a few seconds | An immediate check reads stale state and triggers a false rollback (seen live in benchmark X3) | `verify` polls up to `EA_VERIFY_TRIES` x `EA_VERIFY_WAIT`s (default 6 x 2s) before deciding |
+| An identity override beats every segment override | A target with its own `off` override never turns on, so verification fails | Auto-selected targets skip identities with overrides; an explicit `--target` with one is refused at preview |
+
+## Read commands (JSON shapes)
 
 ```bash
-flagsmith auth status --json --jq '{authenticated, organisation}'
-flagsmith config --json --jq '{project, environment, api_url}'
+flagsmith config --json                       # {environment:{name,value(sdk key)}, project:{value}}
+flagsmith feature get <f> --json              # {id,name,type,default_value,enabled}   (archived => "not found")
+flagsmith feature list --include-archived --json
+flagsmith flag get <f> --json                 # {feature,enabled,value,segment_overrides:N,identity_overrides:N}
+flagsmith flag get <f> --segment <id> --json  # {segment:{id,name},priority,enabled,value}
+flagsmith flag list --feature <f> --json      # segment overrides, in priority order
+flagsmith flag list --feature <f> --identities --json   # [{identifier,enabled,value}]
+flagsmith segment list --json                 # [{id,name,description,rules}]
+flagsmith evaluate <f> --identity <id> --json # {name,enabled,value,reason: "TARGETING_MATCH; segment=..."|"DEFAULT"}
+flagsmith api "api/v1/environments/<key>/edge-identities/?q=<id>"          # {results:[{identity_uuid,identifier}]}
+flagsmith api "api/v1/environments/<key>/edge-identities/<uuid>/list-traits/"  # [{trait_key,trait_value}]
 ```
 
-## Features & Flags (Pre-flight & State)
+Self-hosted (non-Edge) Flagsmith uses `api/v1/environments/<key>/identities/?q=<id>` and `.../identities/<id>/traits/`.
+
+## Manual equivalents of a grant (for an emergency, by hand)
 
 ```bash
-# Check feature exists and is not archived
-flagsmith feature get <flag> --json --jq '{id, name, is_archived}'
-
-# Check environment default state
-flagsmith flag get <flag> --json --jq '{enabled, feature_state_value}'
-
-# Check a segment override on a flag
-flagsmith flag get <flag> --segment <segment_name_or_id> --json --jq '{enabled, feature_state_value, segment_priority}'
-
-# Check an identity override on a flag
-flagsmith flag get <flag> --identifier <identity_id> --json --jq '{enabled, feature_state_value}'
-```
-
-## Segments (Org-Level Early Access)
-
-```bash
-# List early-access segments
-flagsmith segment list --json --jq '[.[] | select(.name | startswith("ea-")) | {id, name, description}]'
-
-# Get a single segment and its rules (for snapshot)
-flagsmith segment get <segment_name_or_id> --json --jq '{id, name, description, rules}'
-
-# Create a segment matching an org trait
-flagsmith segment create ea-<flag>-<customer> \
-  --rules '[{"type":"ALL","rules":[{"type":"ANY","conditions":[{"operator":"EQUAL","property":"org_id","value":"<customer>"}]}]}]' \
-  --description "early-access; flag=<flag>; customer=<customer>; expires=<YYYY-MM-DD>; issue=<url>" \
-  --no-input --json --jq '{id, name}'
-
-# Delete a segment
-flagsmith segment delete ea-<flag>-<customer> --yes --no-input
-```
-
-## Overrides (Apply & Remove)
-
-```bash
-# Enable flag for a segment
-flagsmith flag update <flag> --enable --segment ea-<flag>-<customer> --no-input --json --jq '{enabled}'
-
-# Enable flag for a single identity
-flagsmith flag update <flag> --enable --identifier <identity_id> --no-input --json --jq '{enabled}'
-
-# Remove a segment override
-flagsmith flag delete <flag> --segment ea-<flag>-<customer> --yes --no-input
-
-# Remove an identity override
-flagsmith flag delete <flag> --identifier <identity_id> --yes --no-input
-```
-
-## Evaluation (Verification & Negative Control)
-
-```bash
-# Evaluate a single flag for an existing identity
-flagsmith evaluate <flag> --identity <identity_id> --json --jq '{enabled, value}'
-
-# Evaluate with transient traits (when testing an org trait without persisting)
-flagsmith evaluate <flag> --identity <identity_id> --trait org_id=<customer> --json --jq '{enabled, value}'
-```
-
-## Admin API Fallback (Listing Identity Overrides for `graduate` / `audit`)
-
-```bash
-# List identity-level feature overrides in an environment for a feature ID
-flagsmith api "api/v1/environments/<env_id>/featurestates/?feature=<feature_id>" \
-  --jq '[.results[] | select(.identity != null) | {id, identity, enabled}]'
-```
-
-## GitHub CLI (`gh`)
-
-```bash
-# Read an issue
-gh issue view <number> --json number,title,body,author,url
-
-# Comment on an issue
-gh issue comment <number> --body "<comment>"
-
-# Create a follow-up revoke issue
-gh issue create --title "Revoke early access: <feature> for <customer> (due <YYYY-MM-DD>)" \
-  --label "early-access" --body "<body>"
-
-# List open early-access issues
-gh issue list --label early-access --state open --json number,title,url,body
-
-# Close an issue with a comment
-gh issue close <number> --comment "<comment>"
+flagsmith segment create ea-<flag>-<customer> --description "early-access; flag=<flag>; customer=<customer>; expires=<date>; issue=#<n>" \
+  --rules '{"type":"ALL","rules":[{"type":"ANY","conditions":[{"property":"org_id","operator":"EQUAL","value":"<customer>"}]}]}' --json   # -> {id}
+flagsmith flag update <flag> --enable --segment <id> --yes
+flagsmith flag delete <flag> --segment <id> --yes && flagsmith segment delete <id> --yes   # undo
+flagsmith flag update <flag> --enable --identifier <id> --yes                               # user grant
+flagsmith flag delete <flag> --identifier <id> --yes                                        # undo
 ```

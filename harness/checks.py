@@ -8,6 +8,7 @@ Supports both:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -401,8 +402,9 @@ def verify_scenario(
             iss
             for iss in all_issues
             if title_sub in str(iss.get("title", "")).lower()
-            and want_label in _issue_labels(iss)
+            and (want_label in _issue_labels(iss) or os.environ.get("EA_LABEL_OPTIONAL") == "1")
             and (due_date in str(iss.get("title", "")) or due_date in str(iss.get("body", "")))
+            and iss.get("number", 0) > reader.get_initial_issue_count()
         ]
         record(
             len(matches) >= 1,

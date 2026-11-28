@@ -1,0 +1,45 @@
+# Daily early-access audit (read-only). Copy to .github/workflows/ in the repo that holds this skill.
+# It never changes Flagsmith. When a grant is OVERDUE, STALE or UNTRACKED, it opens (or refreshes) one
+# "Early access digest" issue that tells a human to ask their agent to run `expire`, which still needs approval.
+# Auth: keyless OIDC via Flagsmith/setup-cli (add a trust relationship in Flagsmith), or set secret FLAGSMITH_API_KEY.
+# Config: repository variables FLAGSMITH_ENVIRONMENT (client-side SDK key) and FLAGSMITH_PROJECT.
+name: Early access audit
+
+on:
+  schedule:
+    - cron: "0 8 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    if: ${{ vars.FLAGSMITH_ENVIRONMENT != '' }}
+    env:
+      FLAGSMITH_ENVIRONMENT: ${{ vars.FLAGSMITH_ENVIRONMENT }}
+      FLAGSMITH_PROJECT: ${{ vars.FLAGSMITH_PROJECT }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Flagsmith/setup-cli@v1
+        with:
+          cli-version: v2.0.0
+        env:
+          FLAGSMITH_API_KEY: ${{ secrets.FLAGSMITH_API_KEY }}
+      - name: Audit (read-only)
+        env:
+          FLAGSMITH_API_KEY: ${{ secrets.FLAGSMITH_API_KEY }}
+        run: |
+          EA=$(find . -path '*flagsmith-early-access/scripts/ea.sh' -print -quit)
+          bash "$EA" audit | tee audit.md
+          cat audit.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Open or refresh the digest issue when a human is needed
+        run: |
+          grep -qE 'OVERDUE|STALE|UNTRACKED' audit.md || { echo "All early-access grants are current."; exit 0; }
+          body=$(printf 'Some early-access grants need attention. Ask your coding agent: **"expire overdue early access"**. It shows a plan and waits for your approval.\n\n%s\n' "$(cat audit.md)")
+          n=$(gh issue list --state open --search '"Early access digest" in:title' --json number --jq '.[0].number // empty')
+          if [ -n "$n" ]; then gh issue edit "$n" --body "$body"; else gh issue create --title "Early access digest: grants need attention" --body "$body"; fi

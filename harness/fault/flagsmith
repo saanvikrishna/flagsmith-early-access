@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Live fault injector placed first on PATH by harness/bench.py (skill AND baseline runs see it).
+#   EA_FAULT=x4  the first segment-override write fails midway (npm-style: "Error:" on stderr, exit 0)
+#   EA_FAULT=x1  right after the first segment-override write lands, the control identity (user_3)
+#                is re-tagged into the customer org - a real, concurrent trait change in Flagsmith.
+REAL="${REAL_FLAGSMITH:?REAL_FLAGSMITH not set}"
+MARK="${EA_FAULT_MARK:-/tmp/ea-fault-fired}"
+if [ "${1:-} ${2:-}" = "flag update" ] && [[ " $* " == *" --segment "* ]] && [ ! -e "$MARK" ]; then
+  case "${EA_FAULT:-}" in
+    x4) : >"$MARK"; echo "Error: 502 Bad Gateway (upstream timeout)" >&2; exit 0 ;;
+    x1) "$REAL" "$@"; rc=$?; : >"$MARK"
+        "$REAL" evaluate --identity user_3 --trait org_id=acme --trait plan=pro --persist --no-input --json >/dev/null 2>&1
+        exit $rc ;;
+  esac
+fi
+exec "$REAL" "$@"
