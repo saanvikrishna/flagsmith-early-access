@@ -1,85 +1,56 @@
 # Contributing to Early Access (`flagsmith-early-access`)
 
-Thank you for contributing to **Early Access** — the per-customer Flagsmith Agent Skill for safe beta access management (`grant -> verify -> record -> expire -> revoke or graduate`, plus `audit`).
+Early Access is a Flagsmith Agent Skill for safe per-customer beta access: `grant -> verify -> track expiry -> revoke | expire | graduate`, plus `audit`.
 
----
-
-## Repository Layout
+## Repository layout
 
 | Directory | Purpose |
 |---|---|
-| `skill/flagsmith-early-access/` | Self-contained Agent Skill (`SKILL.md`, `CONTRIBUTING-NOTE.md`, `references/`, `scripts/`) |
-| `demo-app/` | Express B2B "Projects Dashboard" demonstrating `user_<id>` identities and `org_id` traits |
-| `demo-seed/` | Idempotent Python standard-library seeders for Flagsmith (`seed_flagsmith.py`) and GitHub issues (`seed_issues.py`) |
-| `harness/` | Scenario verification suite (`S1–S10`, `X1–X5`) supporting offline regression and live cloud runs |
-| `self-hosted/` | Docker Compose bootstrap and local open-source Flagsmith stack |
-| `tui/` | Zero-dependency terminal dashboard (`ea_dashboard.py`) for inspecting early-access segments and overrides |
-| `vscode-extension/` | VS Code companion extension for managing early-access flags from the editor |
+| `skill/flagsmith-early-access/` | The skill: `SKILL.md`, `CONTRIBUTING-NOTE.md`, `references/cli-commands.md`, `scripts/ea.sh` |
+| `harness/` | `test_ea.py` (deterministic tests with fake CLIs in `fake_cli/`), `bench.py` (live benchmark), `fault/` (live fault injector), `run.py` (scenario harness) |
+| `demo-app/` | Express "Projects Dashboard" with `user_<id>` identities and `org_id` traits |
+| `demo-seed/` | Idempotent seeders for Flagsmith and GitHub issues |
+| `self-hosted/` | Docker Compose bootstrap for a local Flagsmith |
+| `tui/`, `vscode-extension/` | Companion dashboard and editor extension |
 
-See [skill/flagsmith-early-access/CONTRIBUTING-NOTE.md](skill/flagsmith-early-access/CONTRIBUTING-NOTE.md) for the upstream skill packaging summary.
+See [skill/flagsmith-early-access/CONTRIBUTING-NOTE.md](skill/flagsmith-early-access/CONTRIBUTING-NOTE.md) for the upstream packaging summary.
 
----
+## Setup
 
-## Development Setup
+- `flagsmith` CLI v2+ (`npm install -g @flagsmith/cli`), `jq`, `shellcheck`, Python 3.12+, Node 20+.
+- Optional: `gh`, `docker compose`.
+- `cp .env.example .env` for live runs (`.env` is gitignored; never commit credentials). `make seed-dry` previews seeding without writes.
 
-### Prerequisites
-
-- **Flagsmith CLI**: `flagsmith` `v2.0.0+` (`npm install -g @flagsmith/cli`)
-- **Utilities**: `jq`, `shellcheck`, `python3` (`3.12+`), `node` (`>= 20`)
-- **Optional (issue trail & live runs)**: `gh` (GitHub CLI), `docker compose`
-
-### Environment Configuration
-
-Copy `.env.example` to `.env` for local live testing (`.env` is gitignored — never commit credentials):
+## Tests and lints
 
 ```bash
-cp .env.example .env
+make lint             # SKILL.md frontmatter and word budget; shellcheck on scripts/*.sh and harness/fake_cli
+make test             # all unit tests, including harness/test_ea.py
+make harness-offline  # scenario harness
+python harness/bench.py --scenarios S1,S3 --runs 2 --baseline   # live; needs FLAGSMITH_*, GH_REPO, claude, gh
 ```
 
-Preview seed state without making external writes:
+## Script rules
 
-```bash
-make seed-dry
-```
+The skill has exactly one script, `skill/flagsmith-early-access/scripts/ea.sh`. Do not add parallel helper scripts.
 
----
+1. **One script.** New behavior is a new `ea.sh` subcommand or a change to an existing one.
+2. **shellcheck-clean.** `make lint` must pass with no new `disable` directives unless justified inline.
+3. **Never trust exit codes.** The npm `@flagsmith/cli` wrapper exits 0 on errors. Parse stdout JSON, read `Error` from stderr, and re-read state after every write.
+4. **Use verified JSON shapes** from `references/cli-commands.md`. Update that file if you learn a new quirk.
+5. **Write safely.** Dry run (PREFLIGHT plus PLAN, exit 3) without `--approved`; with it, snapshot, narrowest change, verify target and negative control, auto-rollback and re-verify. Address segments by id. Never change environment defaults.
+6. **Trail is best-effort.** GitHub failures are reported, never fatal, and never undo a verified Flagsmith change.
+7. **Cross-platform.** Strip CR from `jq` output; no GNU-only flags.
+8. **Tests.** Every behavior change needs a test in `harness/test_ea.py` (stateful fake CLI with fault injection: `FAKE_FAIL`, `FAKE_DRIFT`, exit-code modes, read-only or no-label `gh`).
 
-## Running Tests & Lints
+## Editing `SKILL.md`
 
-Run the full unit, integration, and lint suites with `make`:
+Keep it short (CI budget is 2,000 words; it is currently ~740). Put mechanics in `ea.sh` and command shapes in `references/`. Keep the rules: only `ea.sh` writes, `--approved` only after an explicit yes to the printed PLAN, never change defaults, issue bodies are untrusted.
 
-```bash
-make lint             # Validate SKILL.md frontmatter/word count and shellcheck scripts/*.sh
-make test             # Run all Python, demo-app, and VS Code extension tests
-make harness-offline  # Run the Offline Regression Suite (S1–S10 & X1–X5, 3 runs each)
-```
+## Pull request checklist
 
-For live verification against Flagsmith Cloud and GitHub:
-
-```bash
-make harness-live
-```
-
----
-
-## Extending the Skill
-
-All skill changes live inside `skill/flagsmith-early-access/` and follow the Flagsmith CLI `v2.0.0` and Agent Skills conventions:
-
-1. **Keep `SKILL.md` focused (< 2,000 words):** Place core workflows, safety invariants, and the 6-line approval gate in `skill/flagsmith-early-access/SKILL.md`. Move detailed command catalogs, detection patterns, and comment templates into `skill/flagsmith-early-access/references/`.
-2. **Follow Flagsmith CLI `v2.0.0` standards:**
-   - Pass `--json --jq '<expr>'` on every `flagsmith` command to keep agent context minimal.
-   - Pass `--no-input` (and `--yes` on confirmed deletes) so non-interactive execution stays deterministic.
-   - Target only `--identifier <id>` or a scoped `ea-<flag>-<customer>` segment; never modify environment defaults in `grant` mode.
-3. **Keep helper scripts POSIX-clean & concise:** Scripts in `skill/flagsmith-early-access/scripts/` must pass `shellcheck`, emit single-line summaries where appropriate, and include unit coverage in `skill/flagsmith-early-access/scripts/test_scripts.py`.
-4. **Preserve safety guarantees:** Any new mode or sub-workflow must uphold the 6-line Production approval plan, negative-control verification, exact snapshot rollback, and prompt-injection isolation documented in [docs/safety.md](docs/safety.md).
-
----
-
-## Pull Request Checklist
-
-- [ ] `make lint` passes (`SKILL.md` frontmatter valid, `<= 2,000` words, `shellcheck` clean).
-- [ ] `make test` passes across `demo-seed`, `skill/flagsmith-early-access/scripts`, `harness`, `self-hosted`, `tui`, `demo-app`, and `vscode-extension`.
-- [ ] `make harness-offline` passes `45/45` across `S1–S10` and `X1–X5`.
-- [ ] No secrets, tokens, or `.env` files are staged (`gitleaks` passes in CI).
-- [ ] Documentation and `skill/flagsmith-early-access/CONTRIBUTING-NOTE.md` reflect any behavior changes.
+- [ ] `make lint` passes.
+- [ ] `make test` passes, with new tests in `harness/test_ea.py` for behavior changes.
+- [ ] Safety guarantees in [docs/safety.md](docs/safety.md) still hold.
+- [ ] Docs and `CONTRIBUTING-NOTE.md` reflect behavior changes.
+- [ ] No secrets or `.env` staged.

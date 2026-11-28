@@ -68,10 +68,12 @@ jobs:
           else
             echo "No shell scripts yet; skipping."
           fi
+      - name: README numbers match benchmark results
+        run: python3 harness/check_readme.py
       - name: Run Python unit & mock tests
         run: |
           ran=0
-          for dir in demo-seed skill/flagsmith-early-access/scripts harness self-hosted tui; do
+          for dir in demo-seed harness self-hosted tui; do
             if [ -d "$dir" ] && [ -n "$(find "$dir" -maxdepth 1 -name 'test_*.py' -print -quit)" ]; then
               python3 -m unittest discover -s "$dir" -p "test_*.py" -v
               ran=1

@@ -1,0 +1,5 @@
+*.sh text eol=lf
+harness/fake_cli/flagsmith text eol=lf
+harness/fake_cli/gh text eol=lf
+harness/fault/flagsmith text eol=lf
+*.jsonl text eol=lf

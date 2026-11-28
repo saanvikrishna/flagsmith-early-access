@@ -1,50 +1,44 @@
 # Security Policy
 
-**Early Access** (`flagsmith-early-access`) operates directly against live feature-flag environments and GitHub issue trackers. Security and blast-radius containment are built into both the skill runtime and CI pipeline.
+**Early Access** (`flagsmith-early-access`) operates on live feature-flag environments and GitHub issue trackers. Blast-radius containment is built into the skill's script and into CI.
 
----
+## 1. Credential hygiene
 
-## 1. Credential Hygiene & Secret Scanning
+- **Never commit secrets.** `FLAGSMITH_API_KEY`, the environment SDK keys, `GH_TOKEN` and `ANTHROPIC_API_KEY` belong in environment variables or a gitignored `.env`. `.env.example` is an empty template.
+- **CI scanning.** Every pull request and push to `main` runs `gitleaks/gitleaks-action@v2` over full history (`.github/workflows/ci.yml`).
+- **No secrets in output.** `ea.sh` prints compact status lines only; the skill tells the agent never to echo credentials or full JSON into chat or issue comments.
 
-- **Never commit secrets:** API keys, SDK keys, and personal access tokens (`FLAGSMITH_API_KEY`, `FLAGSMITH_ENV_KEY_PROD`, `FLAGSMITH_ENV_KEY_DEV`, `GH_TOKEN`, `ANTHROPIC_API_KEY`) must stay in environment variables or a local `.env` file (excluded via `.gitignore`). Use `.env.example` strictly as an empty template.
-- **Automated CI scanning:** Every pull request and push to `main` runs `gitleaks/gitleaks-action@v2` across full git history (`fetch-depth: 0`) in `.github/workflows/ci.yml`.
-- **Zero-secret agent output:** The skill instructs coding agents never to echo credentials, tokens, or full environment dumps into chat summaries or GitHub issue comments.
+## 2. Runtime guardrails
 
----
+All Flagsmith writes go through `skill/flagsmith-early-access/scripts/ea.sh`.
 
-## 2. Runtime Guardrails
-
-Every mutating workflow in `skill/flagsmith-early-access/` enforces five defense-in-depth controls:
-
-| Control | Mechanism | Guarantee |
-|---|---|---|
-| **Human Approval Gate** | Fixed 6-line `PLAN` (`Change`, `Who`, `Control`, `Expires`, `Undo`, `Approve? (yes/no)`) | Zero Production mutations occur without explicit `yes` confirmation from a human operator. |
-| **Narrowest Blast Radius** | `--identifier <id>` or dedicated `ea-<flag>-<customer>` segment | Environment defaults, unrelated flags, and pre-existing segments (e.g., `internal_staff`) are untouched. Environment-wide `grant` requests are refused. |
-| **Negative-Control Verification** | Dual `flagsmith evaluate` check (target identity + unrelated control identity) | Confirms the target matches the intended state and the control identity remains unchanged. |
-| **Exact Snapshot Rollback** | Pre-write state capture via `scripts/snapshot.sh` | Any verification mismatch or partial failure triggers immediate restoration of the pre-change state and re-verification. |
-| **Prompt-Injection Isolation** | Strict structured-field parsing on GitHub issue bodies | External text is treated as untrusted data; only `customer`, `feature`, `environment`, `expires`, and `requester` are extracted, while embedded override instructions are ignored and surfaced in the summary. |
-
----
-
-## 3. Supported Versions
-
-| Component | Supported Version |
+| Control | Mechanism |
 |---|---|
-| `flagsmith-early-access` skill | `main` (Flagsmith CLI `v2.0.0+`) |
-| `demo-app` | Node.js `>= 20.0.0` |
+| Approval gate | Without `--approved`, write commands are read-only dry runs that print the 6-line `PLAN` and exit 3. The agent passes `--approved` only after an explicit yes |
+| Narrowest blast radius | One identity override or one `ea-<flag>-<customer>` segment. Environment defaults, other flags and other segments are never touched |
+| Negative control | A control identity outside the customer is evaluated after every write and must be unchanged |
+| Snapshot and rollback | State is snapshotted before the write; any failure triggers rollback and re-verification |
+| Exit codes not trusted | The npm CLI wrapper exits 0 on errors, so `ea.sh` parses stdout and stderr and re-reads state |
+| Input validation | Refuses duplicate segment names, unknown identities, past or malformed expiry, and archived or missing features |
+| Prompt-injection isolation | Issue bodies are untrusted: only customer, feature, expiry and environment are used; embedded instructions are ignored and reported |
+| Least GitHub privilege | The trail never blocks a Flagsmith result; it works with a read-only or label-less `gh` account (reported, not fatal) |
+
+Details and tests: [docs/safety.md](docs/safety.md).
+
+## 3. Supported versions
+
+| Component | Supported |
+|---|---|
+| `flagsmith-early-access` skill | `main`, with Flagsmith CLI `v2.0.0+` and `jq` (`gh` optional) |
+| `demo-app` | Node.js `>= 20` |
 | Python tooling (`demo-seed`, `harness`, `tui`, `self-hosted`) | Python `3.12+` |
 
----
+## 4. Reporting a vulnerability
 
-## 4. Reporting a Vulnerability
+If you find a credential exposure or a safety-guardrail bypass:
 
-If you discover a security issue, credential exposure, or safety-guardrail bypass:
+1. Do not open a public issue with exploit details or tokens.
+2. Rotate any exposed credentials in Flagsmith, GitHub or Anthropic.
+3. Report privately through GitHub Security Advisories on this repository, with the affected component (`skill/`, `harness/`, `demo-app/`, `tui/`), reproduction steps or a failing test, and expected versus observed state.
 
-1. **Do not open a public GitHub issue** with exploit details or sensitive tokens.
-2. **Rotate any exposed credentials immediately** in Flagsmith, GitHub, or Anthropic consoles.
-3. **Report privately** via GitHub Security Advisories on this repository with:
-   - Affected component (`skill/`, `scripts/`, `demo-app/`, `harness/`, or `tui/`).
-   - Reproduction steps or failing adversarial test case.
-   - Expected vs. observed state.
-
-We acknowledge security reports promptly and prioritize fixes affecting Production flag safety or credential handling.
+Fixes affecting production flag safety or credential handling are prioritized.
